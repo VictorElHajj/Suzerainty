@@ -1,0 +1,10 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy_panorbit_camera = "0.26.0"
+bevy = { version = "0.16.1", features = ["file_watcher"] }
+hexglobe = "0.1.3"
+
