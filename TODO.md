@@ -1,0 +1,2 @@
+1. Need to be able to pass per-face data to the shader, so that each face can have a different color
+2. Need to populate the adecencies, so that each face has a list of neighboring face indices, to use as a graph later.
