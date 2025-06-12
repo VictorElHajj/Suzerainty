@@ -43,6 +43,7 @@ fn main() {
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, (toggle_wireframe, draw_picking))
+        .insert_resource(ClearColor(LinearRgba::BLACK.into()))
         .run();
 }
 
@@ -152,24 +153,16 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
         &mut self,
         tile_index: usize,
         normal: Vec3,
-        adjacencies: &Vec<(usize, usize)>,
+        adjacencies: &FxHashMap<usize, Vec<usize>>,
         vertex_indices: &[u32; SIDES],
     ) {
-        let mut tile_adjacencies = [0; SIDES];
-        let raw_tile_adjacencies = adjacencies
-            .iter()
-            .filter(|(a, b)| *a == tile_index || *b == tile_index)
-            .collect::<Vec<&(usize, usize)>>();
+        let tile_adjacencies = adjacencies.get(&tile_index).unwrap();
         assert!(
-            raw_tile_adjacencies.len() == SIDES,
+            tile_adjacencies.len() == SIDES,
             "Face has {} adjacencies but expected {}",
-            raw_tile_adjacencies.len(),
+            tile_adjacencies.len(),
             SIDES
         );
-        for j in 0..SIDES {
-            let (a, b) = raw_tile_adjacencies[j];
-            tile_adjacencies[j] = if *a == tile_index { *b } else { *a }
-        }
         match SIDES {
             5 => self.tiles.push(Tile::Pentagon {
                 adjecencies: *tile_adjacencies.as_array().unwrap(),
@@ -217,7 +210,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     // Create and save a handle to the mesh.
-    pub const SUBDIVISIONS: u32 = 12;
+    pub const SUBDIVISIONS: u32 = 160;
     pub const TILES: usize = ExactGlobe::<SUBDIVISIONS>::FACES;
     let globe = ExactGlobe::<SUBDIVISIONS>::new();
     let centroids = globe.centroids(None);
@@ -231,10 +224,10 @@ fn setup(
     // This will not remove duplicates like (2, 191) and (191, 2)
     edges.dedup();
     // Remove final duplicates
-    let edges = edges
+    let edges: Vec<(usize, usize)> = edges
         .iter()
         .filter(|(a, b)| {
-            if edges.contains(&(*a, *b)) && edges.contains(&(*b, *a)) {
+            if edges.binary_search(&(*a, *b)).is_ok() && edges.binary_search(&(*b, *a)).is_ok() {
                 // This has to only filter out one of the occurances
                 a > b
             } else {
@@ -243,6 +236,22 @@ fn setup(
         })
         .cloned()
         .collect();
+    let mut edge_map = FxHashMap::<usize, Vec<usize>>::default();
+    for (a, b) in edges.iter() {
+        match edge_map.get_mut(a) {
+            Some(bin) => bin.push(*b),
+            None => {
+                edge_map.insert(*a, vec![*b]);
+            }
+        }
+        match edge_map.get_mut(b) {
+            Some(bin) => bin.push(*a),
+            None => {
+                edge_map.insert(*b, vec![*a]);
+            }
+        }
+    }
+
     let mut colors: Vec<[f32; 4]> = Vec::new();
 
     println!("Face amount: {:?}", globe.count_faces());
@@ -261,7 +270,7 @@ fn setup(
             hexglobe::projection::globe::MeshFace::Pentagon(vertex_indices) => {
                 colors.append(&mut face_color_cycle.take(5).cloned().collect());
                 let normal = normals[vertex_indices[0] as usize].into();
-                sphere_info.add_tile::<5>(i, normal, &edges, &vertex_indices);
+                sphere_info.add_tile::<5>(i, normal, &edge_map, &vertex_indices);
                 sphere_info.add_normal(IndexedNormal {
                     index: i,
                     normal: normal,
@@ -270,7 +279,7 @@ fn setup(
             hexglobe::projection::globe::MeshFace::Hexagon(vertex_indices) => {
                 colors.append(&mut face_color_cycle.take(6).cloned().collect());
                 let normal = normals[vertex_indices[0] as usize].into();
-                sphere_info.add_tile::<6>(i, normal, &edges, &vertex_indices);
+                sphere_info.add_tile::<6>(i, normal, &edge_map, &vertex_indices);
                 sphere_info.add_normal(IndexedNormal {
                     index: i,
                     normal: normal,
