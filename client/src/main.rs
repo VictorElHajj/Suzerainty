@@ -6,7 +6,9 @@ use bevy::{
     pbr::wireframe::{WireframeConfig, WireframePlugin},
     prelude::*,
     render::{
-        camera::ScalingMode, mesh::Indices, render_asset::RenderAssetUsages,
+        camera::ScalingMode,
+        mesh::{Indices, VertexAttributeValues},
+        render_asset::RenderAssetUsages,
         render_resource::PrimitiveTopology,
     },
     text::FontSmoothing,
@@ -51,11 +53,17 @@ struct MainCamera;
 // Also keep a list of vertices by index
 pub enum Tile {
     Pentagon {
+        /// Face indices
         adjecencies: [usize; 5],
+        /// Vertice indices
+        vertices: [usize; 5],
         normal: Vec3,
     },
     Hexagon {
+        /// Face indices
         adjecencies: [usize; 6],
+        /// Vertice indices
+        vertices: [usize; 6],
         normal: Vec3,
     },
 }
@@ -71,6 +79,13 @@ impl Tile {
         match &self {
             Tile::Pentagon { normal, .. } => normal,
             Tile::Hexagon { normal, .. } => normal,
+        }
+    }
+
+    pub fn vertices(&self) -> impl Iterator<Item = &usize> {
+        match &self {
+            Tile::Pentagon { vertices, .. } => vertices.iter(),
+            Tile::Hexagon { vertices, .. } => vertices.iter(),
         }
     }
 }
@@ -138,6 +153,7 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
         tile_index: usize,
         normal: Vec3,
         adjacencies: &Vec<(usize, usize)>,
+        vertex_indices: &[u32; SIDES],
     ) {
         let mut tile_adjacencies = [0; SIDES];
         let raw_tile_adjacencies = adjacencies
@@ -157,10 +173,12 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
         match SIDES {
             5 => self.tiles.push(Tile::Pentagon {
                 adjecencies: *tile_adjacencies.as_array().unwrap(),
+                vertices: *vertex_indices.map(|i| i as usize).as_array().unwrap(),
                 normal,
             }),
             6 => self.tiles.push(Tile::Hexagon {
                 adjecencies: *tile_adjacencies.as_array().unwrap(),
+                vertices: *vertex_indices.map(|i| i as usize).as_array().unwrap(),
                 normal,
             }),
             _ => panic!("add_tile only supports pentagons and hexagons"),
@@ -190,13 +208,16 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
 
 const SPHERE_BIN_COUNT: usize = 3;
 
+#[derive(Component)]
+struct SphereMeshMarker;
+
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     // Create and save a handle to the mesh.
-    pub const SUBDIVISIONS: u32 = 2;
+    pub const SUBDIVISIONS: u32 = 12;
     pub const TILES: usize = ExactGlobe::<SUBDIVISIONS>::FACES;
     let globe = ExactGlobe::<SUBDIVISIONS>::new();
     let centroids = globe.centroids(None);
@@ -240,7 +261,7 @@ fn setup(
             hexglobe::projection::globe::MeshFace::Pentagon(vertex_indices) => {
                 colors.append(&mut face_color_cycle.take(5).cloned().collect());
                 let normal = normals[vertex_indices[0] as usize].into();
-                sphere_info.add_tile::<5>(i, normal, &edges);
+                sphere_info.add_tile::<5>(i, normal, &edges, &vertex_indices);
                 sphere_info.add_normal(IndexedNormal {
                     index: i,
                     normal: normal,
@@ -249,7 +270,7 @@ fn setup(
             hexglobe::projection::globe::MeshFace::Hexagon(vertex_indices) => {
                 colors.append(&mut face_color_cycle.take(6).cloned().collect());
                 let normal = normals[vertex_indices[0] as usize].into();
-                sphere_info.add_tile::<6>(i, normal, &edges);
+                sphere_info.add_tile::<6>(i, normal, &edges, &vertex_indices);
                 sphere_info.add_normal(IndexedNormal {
                     index: i,
                     normal: normal,
@@ -277,6 +298,7 @@ fn setup(
         MeshMaterial3d(materials.add(StandardMaterial {
             ..Default::default()
         })),
+        SphereMeshMarker,
     ));
 
     commands.spawn((
@@ -325,11 +347,14 @@ fn draw_picking(
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Projection, &Transform), With<MainCamera>>,
     sphere_info: Res<SphereInfo<SPHERE_BIN_COUNT>>,
+    sphere_mesh_query: Query<&Mesh3d, With<SphereMeshMarker>>,
     mut gizmos: Gizmos,
+    meshes: ResMut<Assets<Mesh>>,
 ) {
     let window = window_query.single().unwrap();
     let aspect_ratio = window.size().x / window.size().y;
     let (camera_projection, camera_translation) = camera_query.single().unwrap();
+    let sphere_mesh = meshes.get(sphere_mesh_query.single().unwrap()).unwrap();
     if let Some(cursor_pos) = window.cursor_position() {
         if let Projection::Orthographic(orthographic_projection) = camera_projection {
             // [-1, 1] in x and y relative to screen
@@ -359,22 +384,39 @@ fn draw_picking(
                 let normal = point_world.normalize();
 
                 // Binary search for the closest normal to find the tile/face under the cursor
-                let cursor_tile = sphere_info.find_closest_normal(normal);
+                let cursor_tile_index = sphere_info.find_closest_normal(normal).index;
+                let cursor_tile = &sphere_info.tiles[cursor_tile_index];
 
-                // Draw the normal as an arrow from the surface point
-                gizmos.arrow(
-                    Vec3::ZERO,
-                    cursor_tile.normal * 1.2,
-                    Color::LinearRgba(LinearRgba::RED),
-                );
-
-                // Draw connected tiles
-                for index in sphere_info.tiles[cursor_tile.index].adjecencies() {
-                    gizmos.sphere(
-                        *sphere_info.tiles[*index].normal(),
-                        0.01,
-                        Color::LinearRgba(LinearRgba::GREEN),
+                // Draw the selected tile
+                // TODO: Will this perform a copy from the render world each frame? Should I just keep my own copy of the vertices in sphere info and sync as needed?
+                if let Some(VertexAttributeValues::Float32x3(positions)) =
+                    sphere_mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+                {
+                    // Draw selected tile
+                    gizmos.linestrip(
+                        cursor_tile
+                            .vertices()
+                            .chain(std::iter::once(cursor_tile.vertices().next().unwrap()))
+                            .map(|i| {
+                                let v: Vec3 = positions[*i].into();
+                                v * 1.001
+                            }),
+                        Color::LinearRgba(LinearRgba::WHITE),
                     );
+                    // Draw connected tiles
+                    for index in cursor_tile.adjecencies() {
+                        let adjacent_tile = &sphere_info.tiles[*index];
+                        gizmos.linestrip(
+                            adjacent_tile
+                                .vertices()
+                                .chain(std::iter::once(adjacent_tile.vertices().next().unwrap()))
+                                .map(|i| {
+                                    let v: Vec3 = positions[*i].into();
+                                    v * 1.001
+                                }),
+                            Color::LinearRgba(LinearRgba::GREEN),
+                        );
+                    }
                 }
             }
         }
