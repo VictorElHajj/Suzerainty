@@ -1,4 +1,5 @@
-use std::{default, f32::consts::PI, hash::RandomState};
+#![feature(slice_as_array)]
+use std::f32::consts::PI;
 
 use bevy::{
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
@@ -46,30 +47,44 @@ fn main() {
 #[derive(Component)]
 struct MainCamera;
 
-enum Tile {
-    Pentagon { adjecencies: [usize; 5] },
-    Hexagon { adjecencies: [usize; 6] },
+// TODO, break out adjecencies itno enum to keep shared stuff in Tile struct?
+// Also keep a list of vertices by index
+pub enum Tile {
+    Pentagon {
+        adjecencies: [usize; 5],
+        normal: Vec3,
+    },
+    Hexagon {
+        adjecencies: [usize; 6],
+        normal: Vec3,
+    },
 }
 
 impl Tile {
     pub fn adjecencies(&self) -> impl Iterator<Item = &usize> {
         match &self {
-            Tile::Pentagon { adjecencies } => adjecencies.iter(),
-            Tile::Hexagon { adjecencies } => adjecencies.iter(),
+            Tile::Pentagon { adjecencies, .. } => adjecencies.iter(),
+            Tile::Hexagon { adjecencies, .. } => adjecencies.iter(),
+        }
+    }
+    pub fn normal(&self) -> &Vec3 {
+        match &self {
+            Tile::Pentagon { normal, .. } => normal,
+            Tile::Hexagon { normal, .. } => normal,
         }
     }
 }
 
 #[derive(Resource)]
-struct SphereInfo<const BIN_COUNT: usize> {
-    tiles: Vec<Tile>,
+pub struct SphereInfo<const BIN_COUNT: usize> {
+    pub tiles: Vec<Tile>,
     /// Divides sphere into BIN_COUNT bins of aprox equal distance for faster search
     normal_map: FxHashMap<usize, Vec<IndexedNormal>>,
     fibonacci_sphere_points: [IndexedNormal; BIN_COUNT],
 }
 
 #[derive(Clone, Copy)]
-struct IndexedNormal {
+pub struct IndexedNormal {
     index: usize,
     normal: Vec3,
 }
@@ -118,6 +133,40 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
         }
     }
 
+    pub fn add_tile<const SIDES: usize>(
+        &mut self,
+        tile_index: usize,
+        normal: Vec3,
+        adjacencies: &Vec<(usize, usize)>,
+    ) {
+        let mut tile_adjacencies = [0; SIDES];
+        let raw_tile_adjacencies = adjacencies
+            .iter()
+            .filter(|(a, b)| *a == tile_index || *b == tile_index)
+            .collect::<Vec<&(usize, usize)>>();
+        assert!(
+            raw_tile_adjacencies.len() == SIDES,
+            "Face has {} adjacencies but expected {}",
+            raw_tile_adjacencies.len(),
+            SIDES
+        );
+        for j in 0..SIDES {
+            let (a, b) = raw_tile_adjacencies[j];
+            tile_adjacencies[j] = if *a == tile_index { *b } else { *a }
+        }
+        match SIDES {
+            5 => self.tiles.push(Tile::Pentagon {
+                adjecencies: *tile_adjacencies.as_array().unwrap(),
+                normal,
+            }),
+            6 => self.tiles.push(Tile::Hexagon {
+                adjecencies: *tile_adjacencies.as_array().unwrap(),
+                normal,
+            }),
+            _ => panic!("add_tile only supports pentagons and hexagons"),
+        }
+    }
+
     pub fn add_normal(&mut self, indexed_normal: IndexedNormal) {
         let bin = Self::find_closest_normal_internal(
             self.fibonacci_sphere_points.iter(),
@@ -147,7 +196,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     // Create and save a handle to the mesh.
-    pub const SUBDIVISIONS: u32 = 40;
+    pub const SUBDIVISIONS: u32 = 2;
     pub const TILES: usize = ExactGlobe::<SUBDIVISIONS>::FACES;
     let globe = ExactGlobe::<SUBDIVISIONS>::new();
     let centroids = globe.centroids(None);
@@ -155,6 +204,24 @@ fn setup(
     let faces = globe.mesh_faces();
     let triangles = globe.mesh_triangles(&faces);
     let normals = globe.mesh_normals(&vertices);
+    let mut edges = globe.adjacency();
+    // Despite assurances this contains duplicate edges
+    edges.sort_unstable();
+    // This will not remove duplicates like (2, 191) and (191, 2)
+    edges.dedup();
+    // Remove final duplicates
+    let edges = edges
+        .iter()
+        .filter(|(a, b)| {
+            if edges.contains(&(*a, *b)) && edges.contains(&(*b, *a)) {
+                // This has to only filter out one of the occurances
+                a > b
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect();
     let mut colors: Vec<[f32; 4]> = Vec::new();
 
     println!("Face amount: {:?}", globe.count_faces());
@@ -168,26 +235,24 @@ fn setup(
         let face_color = vec![[rng.random(), rng.random(), rng.random(), 1.0]];
         let face_color_cycle = face_color.iter().cycle();
         // Sort out face normals and tiles
+        // All the vertices in each face share the same normal, so just take the first
         match faces[i] {
             hexglobe::projection::globe::MeshFace::Pentagon(vertex_indices) => {
                 colors.append(&mut face_color_cycle.take(5).cloned().collect());
-                sphere_info.tiles.push(Tile::Pentagon {
-                    adjecencies: [0; 5],
-                });
-                // All the vertices in each face share the same normal, so just take the first, same below
+                let normal = normals[vertex_indices[0] as usize].into();
+                sphere_info.add_tile::<5>(i, normal, &edges);
                 sphere_info.add_normal(IndexedNormal {
                     index: i,
-                    normal: normals[vertex_indices[0] as usize].into(),
+                    normal: normal,
                 });
             }
             hexglobe::projection::globe::MeshFace::Hexagon(vertex_indices) => {
                 colors.append(&mut face_color_cycle.take(6).cloned().collect());
-                sphere_info.tiles.push(Tile::Hexagon {
-                    adjecencies: [0; 6],
-                });
+                let normal = normals[vertex_indices[0] as usize].into();
+                sphere_info.add_tile::<6>(i, normal, &edges);
                 sphere_info.add_normal(IndexedNormal {
                     index: i,
-                    normal: normals[vertex_indices[0] as usize].into(),
+                    normal: normal,
                 });
             }
         }
@@ -294,20 +359,20 @@ fn draw_picking(
                 let normal = point_world.normalize();
 
                 // Binary search for the closest normal to find the tile/face under the cursor
-                let cursor_face_normal = sphere_info.find_closest_normal(normal).normal;
+                let cursor_tile = sphere_info.find_closest_normal(normal);
 
                 // Draw the normal as an arrow from the surface point
                 gizmos.arrow(
                     Vec3::ZERO,
-                    cursor_face_normal * 1.2,
+                    cursor_tile.normal * 1.2,
                     Color::LinearRgba(LinearRgba::RED),
                 );
 
-                // Draw buckets
-                for point in sphere_info.fibonacci_sphere_points {
-                    gizmos.arrow(
-                        Vec3::ZERO,
-                        point.normal * 1.1,
+                // Draw connected tiles
+                for index in sphere_info.tiles[cursor_tile.index].adjecencies() {
+                    gizmos.sphere(
+                        *sphere_info.tiles[*index].normal(),
+                        0.01,
                         Color::LinearRgba(LinearRgba::GREEN),
                     );
                 }
