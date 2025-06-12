@@ -1,3 +1,5 @@
+use std::{default, f32::consts::PI, hash::RandomState};
+
 use bevy::{
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     pbr::wireframe::{WireframeConfig, WireframePlugin},
@@ -11,6 +13,8 @@ use bevy::{
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use hexglobe::projection::globe::ExactGlobe;
+use rand::Rng;
+use rustc_hash::FxHashMap;
 
 fn main() {
     App::new()
@@ -57,22 +61,85 @@ impl Tile {
 }
 
 #[derive(Resource)]
-struct SphereInfo {
+struct SphereInfo<const BIN_COUNT: usize> {
     tiles: Vec<Tile>,
-    /// List of (normal, tile_index) tuples sorted by normals in (x then y then z) order
-    normals: Vec<(Vec3, usize)>,
+    /// Divides sphere into BIN_COUNT bins of aprox equal distance for faster search
+    normal_map: FxHashMap<usize, Vec<IndexedNormal>>,
+    fibonacci_sphere_points: [IndexedNormal; BIN_COUNT],
 }
 
-impl SphereInfo {
-    pub fn find_closest_normal(&self, normal: Vec3) -> &Vec3 {
-        &self
-            .normals
-            .iter()
-            .max_by(|a, b| normal.dot(a.0).partial_cmp(&normal.dot(b.0)).unwrap())
+#[derive(Clone, Copy)]
+struct IndexedNormal {
+    index: usize,
+    normal: Vec3,
+}
+
+impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
+    fn find_closest_normal_internal<'a>(
+        normals: impl Iterator<Item = &'a IndexedNormal>,
+        normal: Vec3,
+    ) -> &'a IndexedNormal {
+        &normals
+            .max_by(|a, b| {
+                normal
+                    .dot(a.normal)
+                    .partial_cmp(&normal.dot(b.normal))
+                    .unwrap()
+            })
             .unwrap()
-            .0
+    }
+
+    fn create_fibonacci_points() -> [IndexedNormal; BIN_COUNT] {
+        let golden_angle = PI * (3. - f32::sqrt(5.));
+        let offset = 2. / BIN_COUNT as f32;
+        let mut points = [IndexedNormal {
+            index: 0,
+            normal: Vec3::ZERO,
+        }; BIN_COUNT];
+        for i in 0..BIN_COUNT {
+            let y = i as f32 * offset - 1. + offset / 2.;
+            let r = (1. - y * y).sqrt();
+            let phi = i as f32 * golden_angle;
+            let x = f32::cos(phi) * r;
+            let z = f32::sin(phi) * r;
+            points[i] = IndexedNormal {
+                index: i,
+                normal: Vec3::new(x, y, z),
+            };
+        }
+        points
+    }
+
+    pub fn new(tile_count: usize) -> Self {
+        SphereInfo::<BIN_COUNT> {
+            tiles: Vec::with_capacity(tile_count),
+            normal_map: default(),
+            fibonacci_sphere_points: Self::create_fibonacci_points(),
+        }
+    }
+
+    pub fn add_normal(&mut self, indexed_normal: IndexedNormal) {
+        let bin = Self::find_closest_normal_internal(
+            self.fibonacci_sphere_points.iter(),
+            indexed_normal.normal,
+        )
+        .index;
+        match self.normal_map.get_mut(&bin) {
+            Some(vec) => vec.push(indexed_normal),
+            None => {
+                self.normal_map.insert(bin, vec![indexed_normal]);
+            }
+        }
+    }
+
+    pub fn find_closest_normal(&self, normal: Vec3) -> &IndexedNormal {
+        let bin =
+            Self::find_closest_normal_internal(self.fibonacci_sphere_points.iter(), normal).index;
+        Self::find_closest_normal_internal(self.normal_map[&bin].iter(), normal)
     }
 }
+
+const SPHERE_BIN_COUNT: usize = 3;
 
 fn setup(
     mut commands: Commands,
@@ -80,7 +147,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     // Create and save a handle to the mesh.
-    pub const SUBDIVISIONS: u32 = 10;
+    pub const SUBDIVISIONS: u32 = 40;
     pub const TILES: usize = ExactGlobe::<SUBDIVISIONS>::FACES;
     let globe = ExactGlobe::<SUBDIVISIONS>::new();
     let centroids = globe.centroids(None);
@@ -88,34 +155,45 @@ fn setup(
     let faces = globe.mesh_faces();
     let triangles = globe.mesh_triangles(&faces);
     let normals = globe.mesh_normals(&vertices);
+    let mut colors: Vec<[f32; 4]> = Vec::new();
 
     println!("Face amount: {:?}", globe.count_faces());
 
-    // All the vertices in each face share the same normal, so just take the first
+    let mut sphere_info = SphereInfo::<SPHERE_BIN_COUNT>::new(TILES);
 
-    let mut face_normals: Vec<(Vec3, usize)> = Vec::with_capacity(TILES);
-    let mut tiles: Vec<Tile> = Vec::with_capacity(TILES);
+    let mut rng = rand::rng();
+
     for i in 0..TILES {
+        // Per face random color
+        let face_color = vec![[rng.random(), rng.random(), rng.random(), 1.0]];
+        let face_color_cycle = face_color.iter().cycle();
+        // Sort out face normals and tiles
         match faces[i] {
             hexglobe::projection::globe::MeshFace::Pentagon(vertex_indices) => {
-                face_normals.push((normals[vertex_indices[0] as usize].into(), i));
-                tiles.push(Tile::Pentagon {
+                colors.append(&mut face_color_cycle.take(5).cloned().collect());
+                sphere_info.tiles.push(Tile::Pentagon {
                     adjecencies: [0; 5],
+                });
+                // All the vertices in each face share the same normal, so just take the first, same below
+                sphere_info.add_normal(IndexedNormal {
+                    index: i,
+                    normal: normals[vertex_indices[0] as usize].into(),
                 });
             }
             hexglobe::projection::globe::MeshFace::Hexagon(vertex_indices) => {
-                face_normals.push((normals[vertex_indices[0] as usize].into(), i));
-                tiles.push(Tile::Hexagon {
+                colors.append(&mut face_color_cycle.take(6).cloned().collect());
+                sphere_info.tiles.push(Tile::Hexagon {
                     adjecencies: [0; 6],
+                });
+                sphere_info.add_normal(IndexedNormal {
+                    index: i,
+                    normal: normals[vertex_indices[0] as usize].into(),
                 });
             }
         }
     }
 
-    commands.insert_resource(SphereInfo {
-        tiles,
-        normals: face_normals,
-    });
+    commands.insert_resource(sphere_info);
 
     let mesh_handle = meshes.add(
         Mesh::new(
@@ -124,14 +202,14 @@ fn setup(
         )
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
         .with_inserted_indices(Indices::U32(triangles))
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals),
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors),
     );
 
     // Render the mesh with the custom texture, and add the marker.
     commands.spawn((
         Mesh3d(mesh_handle),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::WHITE,
             ..Default::default()
         })),
     ));
@@ -158,7 +236,7 @@ fn setup(
         PanOrbitCamera {
             focus: Transform::IDENTITY.translation,
             radius: Some(10.),
-            zoom_lower_limit: 0.5,
+            zoom_lower_limit: 0.01,
             zoom_upper_limit: Some(10.),
             allow_upside_down: false,
             pan_sensitivity: 0.,
@@ -181,7 +259,7 @@ fn toggle_wireframe(
 fn draw_picking(
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Projection, &Transform), With<MainCamera>>,
-    sphere_info: Res<SphereInfo>,
+    sphere_info: Res<SphereInfo<SPHERE_BIN_COUNT>>,
     mut gizmos: Gizmos,
 ) {
     let window = window_query.single().unwrap();
@@ -216,7 +294,7 @@ fn draw_picking(
                 let normal = point_world.normalize();
 
                 // Binary search for the closest normal to find the tile/face under the cursor
-                let cursor_face_normal = sphere_info.find_closest_normal(normal);
+                let cursor_face_normal = sphere_info.find_closest_normal(normal).normal;
 
                 // Draw the normal as an arrow from the surface point
                 gizmos.arrow(
@@ -224,6 +302,15 @@ fn draw_picking(
                     cursor_face_normal * 1.2,
                     Color::LinearRgba(LinearRgba::RED),
                 );
+
+                // Draw buckets
+                for point in sphere_info.fibonacci_sphere_points {
+                    gizmos.arrow(
+                        Vec3::ZERO,
+                        point.normal * 1.1,
+                        Color::LinearRgba(LinearRgba::GREEN),
+                    );
+                }
             }
         }
     }
