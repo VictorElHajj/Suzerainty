@@ -199,7 +199,7 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
     }
 }
 
-const SPHERE_BIN_COUNT: usize = 3;
+const SPHERE_BIN_COUNT: usize = 1000;
 
 #[derive(Component)]
 struct SphereMeshMarker;
