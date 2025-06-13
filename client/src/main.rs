@@ -6,9 +6,7 @@ use bevy::{
     pbr::wireframe::{WireframeConfig, WireframePlugin},
     prelude::*,
     render::{
-        camera::ScalingMode,
-        mesh::{Indices, VertexAttributeValues},
-        render_asset::RenderAssetUsages,
+        camera::ScalingMode, mesh::Indices, render_asset::RenderAssetUsages,
         render_resource::PrimitiveTopology,
     },
     text::FontSmoothing,
@@ -94,6 +92,7 @@ impl Tile {
 #[derive(Resource)]
 pub struct SphereInfo<const BIN_COUNT: usize> {
     pub tiles: Vec<Tile>,
+    pub vertices: Vec<[f32; 3]>,
     /// Divides sphere into BIN_COUNT bins of aprox equal distance for faster search
     normal_map: FxHashMap<usize, Vec<IndexedNormal>>,
     fibonacci_sphere_points: [IndexedNormal; BIN_COUNT],
@@ -141,9 +140,10 @@ impl<const BIN_COUNT: usize> SphereInfo<BIN_COUNT> {
         points
     }
 
-    pub fn new(tile_count: usize) -> Self {
+    pub fn new(tile_count: usize, vertices: Vec<[f32; 3]>) -> Self {
         SphereInfo::<BIN_COUNT> {
             tiles: Vec::with_capacity(tile_count),
+            vertices,
             normal_map: default(),
             fibonacci_sphere_points: Self::create_fibonacci_points(),
         }
@@ -210,7 +210,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     // Create and save a handle to the mesh.
-    pub const SUBDIVISIONS: u32 = 160;
+    pub const SUBDIVISIONS: u32 = 320;
     pub const TILES: usize = ExactGlobe::<SUBDIVISIONS>::FACES;
     let globe = ExactGlobe::<SUBDIVISIONS>::new();
     let centroids = globe.centroids(None);
@@ -256,7 +256,7 @@ fn setup(
 
     println!("Face amount: {:?}", globe.count_faces());
 
-    let mut sphere_info = SphereInfo::<SPHERE_BIN_COUNT>::new(TILES);
+    let mut sphere_info = SphereInfo::<SPHERE_BIN_COUNT>::new(TILES, vertices.clone());
 
     let mut rng = rand::rng();
 
@@ -356,14 +356,11 @@ fn draw_picking(
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Projection, &Transform), With<MainCamera>>,
     sphere_info: Res<SphereInfo<SPHERE_BIN_COUNT>>,
-    sphere_mesh_query: Query<&Mesh3d, With<SphereMeshMarker>>,
     mut gizmos: Gizmos,
-    meshes: ResMut<Assets<Mesh>>,
 ) {
     let window = window_query.single().unwrap();
     let aspect_ratio = window.size().x / window.size().y;
     let (camera_projection, camera_translation) = camera_query.single().unwrap();
-    let sphere_mesh = meshes.get(sphere_mesh_query.single().unwrap()).unwrap();
     if let Some(cursor_pos) = window.cursor_position() {
         if let Projection::Orthographic(orthographic_projection) = camera_projection {
             // [-1, 1] in x and y relative to screen
@@ -398,34 +395,30 @@ fn draw_picking(
 
                 // Draw the selected tile
                 // TODO: Will this perform a copy from the render world each frame? Should I just keep my own copy of the vertices in sphere info and sync as needed?
-                if let Some(VertexAttributeValues::Float32x3(positions)) =
-                    sphere_mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-                {
-                    // Draw selected tile
+                // Draw selected tile
+                gizmos.linestrip(
+                    cursor_tile
+                        .vertices()
+                        .chain(std::iter::once(cursor_tile.vertices().next().unwrap()))
+                        .map(|i| {
+                            let v: Vec3 = sphere_info.vertices[*i].into();
+                            v * 1.001
+                        }),
+                    Color::LinearRgba(LinearRgba::WHITE),
+                );
+                // Draw connected tiles
+                for index in cursor_tile.adjecencies() {
+                    let adjacent_tile = &sphere_info.tiles[*index];
                     gizmos.linestrip(
-                        cursor_tile
+                        adjacent_tile
                             .vertices()
-                            .chain(std::iter::once(cursor_tile.vertices().next().unwrap()))
+                            .chain(std::iter::once(adjacent_tile.vertices().next().unwrap()))
                             .map(|i| {
-                                let v: Vec3 = positions[*i].into();
+                                let v: Vec3 = sphere_info.vertices[*i].into();
                                 v * 1.001
                             }),
-                        Color::LinearRgba(LinearRgba::WHITE),
+                        Color::LinearRgba(LinearRgba::GREEN),
                     );
-                    // Draw connected tiles
-                    for index in cursor_tile.adjecencies() {
-                        let adjacent_tile = &sphere_info.tiles[*index];
-                        gizmos.linestrip(
-                            adjacent_tile
-                                .vertices()
-                                .chain(std::iter::once(adjacent_tile.vertices().next().unwrap()))
-                                .map(|i| {
-                                    let v: Vec3 = positions[*i].into();
-                                    v * 1.001
-                                }),
-                            Color::LinearRgba(LinearRgba::GREEN),
-                        );
-                    }
                 }
             }
         }
