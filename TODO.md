@@ -1,5 +1,7 @@
-1. Refactor, rename SphereInfo, break out sphereinfo related stuff to plugin/crate. Add builtin tile gizmo function for drawing.
-2. Start working on generation (game state, prints, tectonics)
+Add tile drawing gizmo member method, adapt it for tile height
+Store tile height seperately (need to be able to retrieve when drawing tile selection, currently this is instead taken from the sphere resource, which does not know about this.)
+Store my own vertices and recreate when height changes?
 
-Unsorted:
-Skybox
+Then refactor!!
+
+Then start on continents

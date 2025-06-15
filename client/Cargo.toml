@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 bevy_panorbit_camera = "0.26.0"
 bevy = { version = "0.16.1", features = ["file_watcher", "bevy_dev_tools"] }
-hexglobe = "0.1.3"
 rand = "0.9.1"
 rustc-hash = "2.1.1"
+hex_sphere = { version = "0.1.0", path = "../crates/hex_sphere" }
+subsphere = "0.7.1"
+noise = "0.9.0"
 
