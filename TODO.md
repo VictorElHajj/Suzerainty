@@ -1,7 +1,5 @@
-Add tile drawing gizmo member method, adapt it for tile height
-Store tile height seperately (need to be able to retrieve when drawing tile selection, currently this is instead taken from the sphere resource, which does not know about this.)
-Store my own vertices and recreate when height changes?
-
-Then refactor!!
+Refactor, move out hexsphere code into plugin
+Add a gamestate and debug UI for more useful debug info
+Then work on continents
 
 Then start on continents
