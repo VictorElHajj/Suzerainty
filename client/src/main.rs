@@ -11,6 +11,8 @@ use bevy::{
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
+use crate::hex_sphere::{HexSphereConfig, HexSpherePlugin};
+
 fn main() {
     App::new()
         .add_plugins((
@@ -31,6 +33,9 @@ fn main() {
                     refresh_interval: core::time::Duration::from_millis(100),
                     enabled: true,
                 },
+            },
+            HexSpherePlugin {
+                config: HexSphereConfig { subdivisions: 548 },
             },
         ))
         .add_systems(Startup, setup)
