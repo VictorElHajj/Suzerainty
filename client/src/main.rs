@@ -1,17 +1,20 @@
 #![feature(slice_as_array)]
 
-pub mod hex_sphere;
+mod debug_ui;
+mod hex_sphere;
 
 use bevy::{
-    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
+    diagnostic::FrameTimeDiagnosticsPlugin,
     pbr::wireframe::{WireframeConfig, WireframePlugin},
     prelude::*,
     render::camera::ScalingMode,
-    text::FontSmoothing,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
-use crate::hex_sphere::{HexSphereConfig, HexSpherePlugin};
+use crate::{
+    debug_ui::DebugUIPlugin,
+    hex_sphere::{HexSphereConfig, HexSpherePlugin},
+};
 
 fn main() {
     App::new()
@@ -19,23 +22,10 @@ fn main() {
             DefaultPlugins.set(ImagePlugin::default_nearest()),
             WireframePlugin::default(),
             PanOrbitCameraPlugin,
-            FpsOverlayPlugin {
-                config: FpsOverlayConfig {
-                    text_config: TextFont {
-                        font_size: 20.0,
-                        font: default(),
-                        font_smoothing: FontSmoothing::default(),
-                        ..default()
-                    },
-                    // We can also change color of the overlay
-                    text_color: Color::WHITE,
-                    // We can also set the refresh interval for the FPS counter
-                    refresh_interval: core::time::Duration::from_millis(100),
-                    enabled: true,
-                },
-            },
+            FrameTimeDiagnosticsPlugin::default(),
+            DebugUIPlugin,
             HexSpherePlugin {
-                config: HexSphereConfig { subdivisions: 548 },
+                config: HexSphereConfig { subdivisions: 8 },
             },
         ))
         .add_systems(Startup, setup)
