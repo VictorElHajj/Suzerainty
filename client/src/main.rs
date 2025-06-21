@@ -2,7 +2,9 @@
 
 mod debug_ui;
 mod hex_sphere;
+mod sphere_bins;
 mod states;
+mod tectonics;
 
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
@@ -16,6 +18,7 @@ use crate::{
     debug_ui::{DebugDiagnostics, DebugUIPlugin},
     hex_sphere::{HexSphereConfig, HexSpherePlugin},
     states::SimulationState,
+    tectonics::{TectonicsConfiguration, TectonicsPlugin},
 };
 
 fn main() {
@@ -40,7 +43,10 @@ fn main() {
                 diagnostics: DebugDiagnostics::seed(rand::random::<u32>()),
             },
             HexSpherePlugin {
-                config: HexSphereConfig { subdivisions: 512 },
+                config: HexSphereConfig { subdivisions: 128 },
+            },
+            TectonicsPlugin {
+                config: TectonicsConfiguration {},
             },
         ))
         .add_systems(Startup, setup)
