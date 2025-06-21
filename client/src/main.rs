@@ -2,6 +2,7 @@
 
 mod debug_ui;
 mod hex_sphere;
+mod states;
 
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
@@ -12,25 +13,40 @@ use bevy::{
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use crate::{
-    debug_ui::DebugUIPlugin,
+    debug_ui::{DebugDiagnostics, DebugUIPlugin},
     hex_sphere::{HexSphereConfig, HexSpherePlugin},
+    states::SimulationState,
 };
 
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins.set(ImagePlugin::default_nearest()),
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Suzerainty".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
             WireframePlugin::default(),
             PanOrbitCameraPlugin,
-            FrameTimeDiagnosticsPlugin::default(),
-            DebugUIPlugin,
+            FrameTimeDiagnosticsPlugin {
+                max_history_length: 60,
+                smoothing_factor: 0.1,
+            },
+            DebugUIPlugin {
+                diagnostics: DebugDiagnostics::seed(rand::random::<u32>()),
+            },
             HexSpherePlugin {
-                config: HexSphereConfig { subdivisions: 8 },
+                config: HexSphereConfig { subdivisions: 512 },
             },
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, toggle_wireframe)
         .insert_resource(ClearColor(LinearRgba::BLACK.into()))
+        .init_state::<SimulationState>()
         .run();
 }
 

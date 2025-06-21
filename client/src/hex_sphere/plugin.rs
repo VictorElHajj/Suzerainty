@@ -1,4 +1,4 @@
-use std::num::NonZero;
+use std::{num::NonZero, time::Instant};
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -11,7 +11,9 @@ use subsphere::{Face, Sphere, Vertex};
 
 use crate::{
     MainCamera,
+    debug_ui::DebugDiagnostics,
     hex_sphere::{HexSphere, Tile, vec_utils},
+    states::SimulationState,
 };
 
 #[derive(Component)]
@@ -27,7 +29,7 @@ pub struct HexSpherePlugin {
 impl Plugin for HexSpherePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.config)
-            .add_systems(Startup, setup)
+            .add_systems(OnEnter(SimulationState::MeshGen), setup)
             .add_systems(Update, draw_picking);
     }
 }
@@ -36,8 +38,11 @@ fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut diagnostics: ResMut<DebugDiagnostics>,
     config: Res<HexSphereConfig>,
+    mut next_state: ResMut<NextState<SimulationState>>,
 ) {
+    let start = Instant::now();
     // Create and save a handle to the mesh.
     // 548 is the smallest number above a million tiles.
     let c = config.subdivisions % 3;
@@ -159,6 +164,11 @@ fn setup(
         })),
         SphereMeshMarker,
     ));
+
+    diagnostics.tiles = Some(num_faces);
+    diagnostics.subdivisions = Some(config.subdivisions);
+    diagnostics.mesh_gen_time = Some(start.elapsed());
+    next_state.set(SimulationState::Tectonics)
 }
 
 /// Picks the tile under the cursor

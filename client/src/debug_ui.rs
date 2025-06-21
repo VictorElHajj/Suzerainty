@@ -1,74 +1,405 @@
+use std::time::Duration;
+
 use bevy::color::palettes;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
-use bevy::text::ComputedTextBlock;
 
-pub struct DebugUIPlugin;
+use crate::states::SimulationState;
+
+#[derive(Copy, Clone)]
+pub struct DebugUIPlugin {
+    pub diagnostics: DebugDiagnostics,
+}
 impl Plugin for DebugUIPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(self.diagnostics);
         app.add_systems(PreStartup, setup)
-            .add_systems(Update, update_fps);
+            .add_systems(Update, update_fps)
+            .add_systems(OnExit(SimulationState::MeshGen), add_mesh_gen_stats)
+            .add_systems(
+                Update,
+                update_state_text.run_if(state_changed::<SimulationState>),
+            );
+    }
+}
+
+#[derive(Resource, Copy, Clone)]
+pub struct DebugDiagnostics {
+    pub seed: u32,
+    pub subdivisions: Option<u32>,
+    pub tiles: Option<usize>,
+    pub mesh_gen_time: Option<Duration>,
+}
+
+impl DebugDiagnostics {
+    pub fn seed(seed: u32) -> Self {
+        DebugDiagnostics {
+            seed,
+            subdivisions: None,
+            tiles: None,
+            mesh_gen_time: None,
+        }
     }
 }
 
 #[derive(Component)]
+struct StateText;
+
+#[derive(Component)]
 struct FpsText;
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Text with multiple sections
+#[derive(Component)]
+struct SeedText;
+
+#[derive(Component)]
+struct SubdivisionsText;
+
+#[derive(Component)]
+struct TileAmountText;
+
+#[derive(Component)]
+struct MeshGenerationTimeText;
+
+fn update_fps(
+    bevy_diagnostics: Res<DiagnosticsStore>,
+    mut fps_text_query: Query<&mut Text, With<FpsText>>,
+) {
+    if let Some(fps) = bevy_diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
+        if let Some(value) = fps.smoothed() {
+            // Update the value of the second section
+            **fps_text_query.single_mut().unwrap() = format!("{value:.0}");
+        }
+    }
+}
+
+fn update_state_text(
+    mut state_text_query: Query<&mut Text, With<StateText>>,
+    current_state: Res<State<SimulationState>>,
+) {
+    **state_text_query.single_mut().unwrap() = current_state.to_string();
+}
+
+fn add_mesh_gen_stats(
+    diagnostics: Res<DebugDiagnostics>,
+    mut texts: ParamSet<(
+        Query<&mut Text, With<TileAmountText>>,
+        Query<&mut Text, With<MeshGenerationTimeText>>,
+        Query<&mut Text, With<SubdivisionsText>>,
+    )>,
+) {
+    **texts.p0().single_mut().unwrap() = diagnostics
+        .tiles
+        .expect("Tiles should be set during MeshGen state")
+        .to_string()
+        // Thousands seperator
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join(",");
+    let mesh_gen_duration = diagnostics
+        .mesh_gen_time
+        .expect("Mesh generation time should be set during MeshGen state");
+    **texts.p1().single_mut().unwrap() = format!(
+        "{}.{}s",
+        mesh_gen_duration.as_secs(),
+        mesh_gen_duration.subsec_millis()
+    );
+    **texts.p2().single_mut().unwrap() = diagnostics
+        .subdivisions
+        .expect("Subdivisions should be set during MeshGen state")
+        .to_string();
+}
+
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    diagnostics: Res<DebugDiagnostics>,
+) {
     commands.spawn((
         Node {
             width: Val::Px(200.),
             height: Val::Px(600.),
             margin: UiRect::with_left(UiRect::all(Val::Px(10.)), Val::Auto),
             padding: UiRect::all(Val::Px(10.)),
-            display: Display::Grid,
-            grid_template_columns: vec![GridTrack::min_content(), GridTrack::flex(1.0)],
-            grid_template_rows: vec![GridTrack::auto()],
+            flex_direction: FlexDirection::Column,
             ..Default::default()
         },
         BackgroundColor(LinearRgba::new(0.05, 0.05, 0.05, 0.8).into()),
         children![
             (
                 Node {
-                    display: Display::Grid,
+                    padding: UiRect::new(Val::Px(0.), Val::Px(0.), Val::Px(5.), Val::Px(5.)),
+                    border: UiRect::bottom(Val::Px(1.)),
+                    flex_direction: FlexDirection::Column,
                     ..Default::default()
                 },
-                Text::new("FPS: "),
-                TextFont {
-                    // This font is loaded and will be used instead of the default font.
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                    font_size: 18.0,
-                    ..default()
-                }
+                BorderColor(LinearRgba::new(0.2, 0.2, 0.2, 0.8).into()),
+                children![
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("FPS: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 18.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 16.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                FpsText
+                            )
+                        ]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Seed: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 18.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::new(diagnostics.seed.to_string()),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 16.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                SeedText
+                            )
+                        ]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("State: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 18.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 16.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                StateText
+                            )
+                        ]
+                    ),
+                ]
             ),
             (
                 Node {
-                    display: Display::Grid,
-                    margin: UiRect::left(Val::Auto),
+                    padding: UiRect::new(Val::Px(0.), Val::Px(0.), Val::Px(5.), Val::Px(5.)),
+                    border: UiRect::bottom(Val::Px(1.)),
+                    flex_direction: FlexDirection::Column,
                     ..Default::default()
                 },
-                Text::default(),
-                // "default_font" feature is unavailable, load a font to use instead.
-                TextFont {
-                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                    font_size: 18.0,
+                BorderColor(LinearRgba::new(0.2, 0.2, 0.2, 0.8).into()),
+                children![
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            display: Display::Flex,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            ..Default::default()
+                        },
+                        children![(
+                            Text::new("Mesh generation"),
+                            TextFont {
+                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                font_size: 18.0,
+                                ..default()
+                            }
+                        ),]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Subdivisions: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 16.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 16.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                SubdivisionsText,
+                            )
+                        ]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Tiles: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 16.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 16.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                TileAmountText
+                            )
+                        ]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Time: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 16.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 16.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                MeshGenerationTimeText
+                            )
+                        ]
+                    ),
+                ]
+            ),
+            (
+                Node {
+                    padding: UiRect::new(Val::Px(0.), Val::Px(0.), Val::Px(5.), Val::Px(5.)),
+                    border: UiRect::bottom(Val::Px(1.)),
+                    flex_direction: FlexDirection::Column,
                     ..Default::default()
                 },
-                TextColor(palettes::css::GOLD.into()),
-                FpsText
+                BorderColor(LinearRgba::new(0.2, 0.2, 0.2, 0.8).into()),
+                children![(
+                    Node {
+                        width: Val::Percent(100.),
+                        display: Display::Flex,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..Default::default()
+                    },
+                    children![(
+                        Text::new("Tectonic simulation"),
+                        TextFont {
+                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                            font_size: 18.0,
+                            ..default()
+                        }
+                    ),]
+                ),]
+            ),
+            (
+                Node {
+                    padding: UiRect::new(Val::Px(0.), Val::Px(0.), Val::Px(5.), Val::Px(5.)),
+                    border: UiRect::bottom(Val::Px(1.)),
+                    flex_direction: FlexDirection::Column,
+                    ..Default::default()
+                },
+                BorderColor(LinearRgba::new(0.2, 0.2, 0.2, 0.8).into()),
+                children![(
+                    Node {
+                        width: Val::Percent(100.),
+                        display: Display::Flex,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..Default::default()
+                    },
+                    children![(
+                        Text::new("Erosion simulation"),
+                        TextFont {
+                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                            font_size: 18.0,
+                            ..default()
+                        }
+                    ),]
+                ),]
             )
         ],
     ));
-}
-
-fn update_fps(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text, With<FpsText>>) {
-    for mut span in &mut query {
-        if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
-            if let Some(value) = fps.smoothed() {
-                // Update the value of the second section
-                **span = format!("{value:.0}");
-            }
-        }
-    }
 }
