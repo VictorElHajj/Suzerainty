@@ -53,7 +53,7 @@ fn draw_bins(mut gizmos: Gizmos, bins: Res<TestBins>, current_mouse_pick: Res<Cu
                 let distance_fraction = geodesic_distance / radius;
                 gizmos.arrow(
                     *vec,
-                    vec * (1.1 - distance_fraction / 10.),
+                    vec * (1.15 - distance_fraction / 10.),
                     LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
                 );
             }

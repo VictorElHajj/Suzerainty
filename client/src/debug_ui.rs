@@ -121,13 +121,13 @@ fn setup(
     commands.spawn((
         Node {
             width: Val::Px(200.),
-            height: Val::Px(600.),
+            height: Val::Auto,
             margin: UiRect::with_left(UiRect::all(Val::Px(10.)), Val::Auto),
             padding: UiRect::all(Val::Px(10.)),
             flex_direction: FlexDirection::Column,
             ..Default::default()
         },
-        BackgroundColor(LinearRgba::new(0.05, 0.05, 0.05, 0.8).into()),
+        BackgroundColor(LinearRgba::new(0.01, 0.01, 0.01, 0.8).into()),
         children![
             (
                 Node {
@@ -148,7 +148,7 @@ fn setup(
                                 Text::new("FPS: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 18.0,
+                                    font_size: 12.0,
                                     ..default()
                                 }
                             ),
@@ -160,7 +160,7 @@ fn setup(
                                 Text::default(),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
@@ -178,7 +178,7 @@ fn setup(
                                 Text::new("Seed: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 18.0,
+                                    font_size: 12.0,
                                     ..default()
                                 }
                             ),
@@ -190,7 +190,7 @@ fn setup(
                                 Text::new(diagnostics.seed.to_string()),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
@@ -208,7 +208,7 @@ fn setup(
                                 Text::new("State: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 18.0,
+                                    font_size: 12.0,
                                     ..default()
                                 }
                             ),
@@ -220,7 +220,7 @@ fn setup(
                                 Text::default(),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
@@ -251,7 +251,7 @@ fn setup(
                             Text::new("Mesh generation"),
                             TextFont {
                                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                font_size: 18.0,
+                                font_size: 14.0,
                                 ..default()
                             }
                         ),]
@@ -266,7 +266,7 @@ fn setup(
                                 Text::new("Subdivisions: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..default()
                                 }
                             ),
@@ -278,7 +278,7 @@ fn setup(
                                 Text::default(),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
@@ -296,7 +296,7 @@ fn setup(
                                 Text::new("Tiles: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..default()
                                 }
                             ),
@@ -308,7 +308,7 @@ fn setup(
                                 Text::default(),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
@@ -326,7 +326,7 @@ fn setup(
                                 Text::new("Time: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..default()
                                 }
                             ),
@@ -338,7 +338,7 @@ fn setup(
                                 Text::default(),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraMono-Medium.ttf"),
-                                    font_size: 16.0,
+                                    font_size: 12.0,
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
@@ -368,7 +368,7 @@ fn setup(
                         Text::new("Tectonic simulation"),
                         TextFont {
                             font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                            font_size: 18.0,
+                            font_size: 14.0,
                             ..default()
                         }
                     ),]
@@ -394,7 +394,7 @@ fn setup(
                         Text::new("Erosion simulation"),
                         TextFont {
                             font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                            font_size: 18.0,
+                            font_size: 14.0,
                             ..default()
                         }
                     ),]
