@@ -2,8 +2,11 @@ use std::f32::consts::PI;
 
 use bevy::math::Vec3;
 
-// TODO: Remove pub
-pub struct Bin<T: Sized + Copy> {
+pub trait GetNormal {
+    fn normal(&self) -> Vec3;
+}
+
+pub struct Bin<T: Sized + GetNormal> {
     pub normal: Vec3,
     /// Aproximation of how large is bucket is on the sphere
     pub max_geodesic_distance: f32,
@@ -11,11 +14,11 @@ pub struct Bin<T: Sized + Copy> {
 }
 
 /// Creates BINS bins equally across a sphere. Items are inserted with a unit sphere normal and put in the closest bucket.
-pub struct SphereBins<const BINS: usize, T: Sized + Copy> {
+pub struct SphereBins<const BINS: usize, T: Sized + GetNormal> {
     pub(crate) bins: [Bin<T>; BINS],
 }
 
-impl<const BINS: usize, T: Sized + Copy> SphereBins<BINS, T> {
+impl<const BINS: usize, T: Sized + GetNormal> SphereBins<BINS, T> {
     pub fn new() -> Self {
         let golden_angle = PI * (3. - f32::sqrt(5.));
         let offset: f32 = 2. / BINS as f32;
@@ -36,14 +39,14 @@ impl<const BINS: usize, T: Sized + Copy> SphereBins<BINS, T> {
     }
 
     /// item is put in bin with closest normal
-    pub fn insert(&mut self, normal: Vec3, item: T) {
+    pub fn insert(&mut self, item: T) {
         let closest_bin = self
             .bins
             .iter_mut()
             .max_by(|a, b| {
-                normal
+                item.normal()
                     .dot(a.normal)
-                    .partial_cmp(&normal.dot(b.normal))
+                    .partial_cmp(&item.normal().dot(b.normal))
                     .unwrap()
             })
             .unwrap();
@@ -61,5 +64,26 @@ impl<const BINS: usize, T: Sized + Copy> SphereBins<BINS, T> {
                 geodesic_distance < bin.max_geodesic_distance + radius
             })
             .flat_map(|bin| bin.items.iter())
+    }
+
+    pub fn get_closest(&self, normal: Vec3) -> &T {
+        self.bins
+            .iter()
+            .max_by(|a, b| {
+                normal
+                    .dot(a.normal)
+                    .partial_cmp(&normal.dot(b.normal))
+                    .unwrap()
+            })
+            .expect("Sphere Bin had no bins.")
+            .items
+            .iter()
+            .max_by(|a, b| {
+                normal
+                    .dot(a.normal())
+                    .partial_cmp(&normal.dot(b.normal()))
+                    .unwrap()
+            })
+            .expect("Closest bin had no items.")
     }
 }

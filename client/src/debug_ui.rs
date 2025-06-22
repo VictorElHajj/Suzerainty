@@ -25,14 +25,14 @@ impl Plugin for DebugUIPlugin {
 
 #[derive(Resource, Copy, Clone)]
 pub struct DebugDiagnostics {
-    pub seed: u32,
+    pub seed: u64,
     pub subdivisions: Option<u32>,
     pub tiles: Option<usize>,
     pub mesh_gen_time: Option<Duration>,
 }
 
 impl DebugDiagnostics {
-    pub fn seed(seed: u32) -> Self {
+    pub fn seed(seed: u64) -> Self {
         DebugDiagnostics {
             seed,
             subdivisions: None,

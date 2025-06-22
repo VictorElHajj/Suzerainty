@@ -79,23 +79,16 @@ fn setup(
     let mut colors: Vec<[f32; 4]> = vec![[0.; 4]; num_vertices];
     // let mut normals: Vec<[f32; 3]> = vec![[0.; 3]; num_vertices];
 
-    // Temp height generation just to see how it looks like with 3d noise
     let mut tile_heights: Vec<f32> = Vec::with_capacity(hex_sphere.num_faces());
-    let noise = noise::Simplex::new(2012);
     for face in hex_sphere.faces() {
-        // range [-1, 1]
-        let noise_1 = 1. / 3. * noise.get(face.center().pos().map(|f| f * 48.));
-        let noise_2 = 2. / 3. * noise.get(face.center().pos().map(|f| f * 8.));
-        let noise = noise_1 + noise_2;
-        // range [0.99, 1.01]
-        let adjusted_noise = 1. + noise as f32 / 100.;
-        tile_heights.push(adjusted_noise);
+        let vec: Vec3 = face.center().pos().map(|f| f as f32).into();
+        tile_heights.push(vec.length());
     }
 
     // Create tiles and mesh
     for (i, face) in hex_sphere.faces().enumerate() {
         // Build triangles, we want each face to be triangular slices around the center point
-        let height_color = (tile_heights[i] - 0.99) * 100.;
+        let height_color = 1.0;
         let face_color = [height_color, height_color, height_color, 1.0];
         let face_normal = vec_utils::f64_3_to_f32_3(&face.center().pos());
         let face_center = face_normal.map(|f| f * tile_heights[i]);

@@ -13,6 +13,7 @@ use bevy::{
     render::camera::ScalingMode,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use rand::SeedableRng;
 
 use crate::{
     debug_ui::{DebugDiagnostics, DebugUIPlugin},
@@ -22,6 +23,7 @@ use crate::{
 };
 
 fn main() {
+    let seed = rand::random::<u64>();
     App::new()
         .add_plugins((
             DefaultPlugins
@@ -40,21 +42,31 @@ fn main() {
                 smoothing_factor: 0.1,
             },
             DebugUIPlugin {
-                diagnostics: DebugDiagnostics::seed(rand::random::<u32>()),
+                diagnostics: DebugDiagnostics::seed(seed),
             },
             HexSpherePlugin {
-                config: HexSphereConfig { subdivisions: 128 },
+                config: HexSphereConfig { subdivisions: 32 },
             },
             TectonicsPlugin {
-                config: TectonicsConfiguration {},
+                config: TectonicsConfiguration {
+                    major_plate_fraction: 0.5,
+                    major_tile_fraction: 0.75,
+                    plate_goal: 12,
+                    continental_rate: 0.3,
+                    min_plate_size: 15,
+                },
             },
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, toggle_wireframe)
         .insert_resource(ClearColor(LinearRgba::BLACK.into()))
+        .insert_resource(GlobalRng(rand::rngs::StdRng::seed_from_u64(seed)))
         .init_state::<SimulationState>()
         .run();
 }
+
+#[derive(Resource)]
+struct GlobalRng(rand::rngs::StdRng);
 
 #[derive(Component)]
 struct MainCamera;
