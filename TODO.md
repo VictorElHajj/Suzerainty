@@ -36,7 +36,7 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 
 
 ### Current order
-1. Replace hard coded plate velocity with a plate force and breaking force
+1. Add tectonic simulation time to debug ui
 2. Write vertex update method interpolating from plate particles
 
-Need to retry attraction force. Maybe attraction should be constant across distances to be overruled by repulsion when closer? that way the edge pieces will be pulled towards the main mass.
+Model fluid rigidity?

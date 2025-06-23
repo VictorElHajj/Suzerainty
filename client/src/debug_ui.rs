@@ -5,6 +5,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 
 use crate::states::SimulationState;
+use crate::tectonics::TectonicsIteration;
 
 #[derive(Copy, Clone)]
 pub struct DebugUIPlugin {
@@ -19,6 +20,10 @@ impl Plugin for DebugUIPlugin {
             .add_systems(
                 Update,
                 update_state_text.run_if(state_changed::<SimulationState>),
+            )
+            .add_systems(
+                Update,
+                update_tectonics.run_if(in_state(SimulationState::Tectonics)),
             );
     }
 }
@@ -59,6 +64,12 @@ struct TileAmountText;
 
 #[derive(Component)]
 struct MeshGenerationTimeText;
+
+#[derive(Component)]
+struct TectonicsParticleText;
+
+#[derive(Component)]
+struct TectonicsIterationText;
 
 fn update_fps(
     bevy_diagnostics: Res<DiagnosticsStore>,
@@ -111,6 +122,38 @@ fn add_mesh_gen_stats(
         .subdivisions
         .expect("Subdivisions should be set during MeshGen state")
         .to_string();
+}
+
+fn update_tectonics(
+    diagnostics: Res<DebugDiagnostics>,
+    tectonics_iteration: Res<TectonicsIteration>,
+    mut texts: ParamSet<(
+        Query<&mut Text, With<TectonicsParticleText>>,
+        Query<&mut Text, With<TectonicsIterationText>>,
+    )>,
+) {
+    **texts.p0().single_mut().unwrap() = diagnostics
+        .tiles
+        .expect("Tiles should be set during MeshGen state")
+        .to_string()
+        // Thousands seperator
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join(",");
+    **texts.p1().single_mut().unwrap() = tectonics_iteration
+        .0
+        .to_string()
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join(",");
 }
 
 fn setup(
@@ -356,23 +399,85 @@ fn setup(
                     ..Default::default()
                 },
                 BorderColor(LinearRgba::new(0.2, 0.2, 0.2, 0.8).into()),
-                children![(
-                    Node {
-                        width: Val::Percent(100.),
-                        display: Display::Flex,
-                        align_items: AlignItems::Center,
-                        justify_content: JustifyContent::Center,
-                        ..Default::default()
-                    },
-                    children![(
-                        Text::new("Tectonic simulation"),
-                        TextFont {
-                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                            font_size: 14.0,
-                            ..default()
-                        }
-                    ),]
-                ),]
+                children![
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            display: Display::Flex,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            ..Default::default()
+                        },
+                        children![(
+                            Text::new("Tectonic simulation"),
+                            TextFont {
+                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                font_size: 14.0,
+                                ..default()
+                            }
+                        ),]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Particles: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 12.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 12.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                TectonicsParticleText
+                            )
+                        ]
+                    ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Iteration: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 12.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 12.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                TectonicsIterationText
+                            )
+                        ]
+                    ),
+                ]
             ),
             (
                 Node {
