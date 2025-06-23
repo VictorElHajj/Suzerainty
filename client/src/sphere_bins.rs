@@ -17,6 +17,7 @@ pub struct Bin<T: Sized + GetNormal + Send> {
 /// Creates BINS bins equally across a sphere. Items are inserted with a unit sphere normal and put in the closest bucket.
 pub struct SphereBins<const BINS: usize, T: Sized + GetNormal + Send + Sync> {
     pub(crate) bins: [Bin<T>; BINS],
+    count: usize,
 }
 
 impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> {
@@ -36,7 +37,7 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
                 max_geodesic_distance: f32::acos(1. - 2. / BINS as f32),
             }
         });
-        return SphereBins { bins };
+        return SphereBins { bins, count: 0 };
     }
 
     /// item is put in bin with closest normal
@@ -51,6 +52,7 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
                     .unwrap()
             })
             .unwrap();
+        self.count += 1;
         closest_bin.items.push(item);
     }
 
@@ -119,5 +121,10 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
         for item in items_outside_bins {
             self.insert(item);
         }
+    }
+
+    /// Returns amount of items within the sphere bin
+    pub fn count(&self) -> usize {
+        self.count
     }
 }
