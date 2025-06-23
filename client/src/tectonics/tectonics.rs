@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::f32::consts::PI;
 
 use bevy::{math::NormedVectorSpace, platform::collections::HashSet, prelude::*};
@@ -34,9 +35,12 @@ pub struct TectonicsConfiguration {
     /// Modifier to the plate particle repulsive force, is 4x to particles of other plates
     pub repulsive_force_modifier: f32,
     /// Modifier to the plate particle attractive force, only works on particles of same plate
-    pub attractive_force_modifier: f32,
+    pub attractive_force: f32,
     /// Modifier to the force applies by the plate rotational axis to plate particles.
     pub plate_force_modifier: f32,
+    /// The rate at which the plate axis of rotation drifts in position
+    pub plate_rotation_drift_rate: f32,
+    pub timestep: f32,
 }
 
 pub struct TectonicsPlugin {
@@ -46,15 +50,12 @@ impl Plugin for TectonicsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.config)
             .add_systems(OnEnter(SimulationState::Tectonics), setup)
-            .add_systems(
-                Update,
-                (draw_particles, draw_bins, update_particle_velocities),
-            );
+            .add_systems(Update, (draw_particles, draw_bins, simulate));
     }
 }
 
 #[derive(Resource)]
-struct PlateParticles(SphereBins<100, PlateParticle>);
+struct PlateParticles(SphereBins<50, PlateParticle>);
 
 #[derive(Resource)]
 struct Plates(Vec<Plate>);
@@ -71,7 +72,7 @@ fn setup(
     let mut generated_majors = 0;
     let mut generated_minors = 0;
     let mut plates = Vec::<Plate>::new();
-    let mut particle_bins = SphereBins::<100, PlateParticle>::new();
+    let mut particle_bins = SphereBins::<50, PlateParticle>::new();
 
     // There is a bit of heuristics here, like the magic / 2. This is not a perfect technique.
     let tile_count = hex_sphere.tiles.len();
@@ -101,6 +102,11 @@ fn setup(
             plate_type: plate_type.clone(),
             color: plate_color,
             axis_of_rotation: Vec3::new(
+                rng.0.random_range(-1.0..1.0),
+                rng.0.random_range(-1.0..1.0),
+                rng.0.random_range(-1.0..1.0),
+            ),
+            drift_direction: Vec3::new(
                 rng.0.random_range(-1.0..1.0),
                 rng.0.random_range(-1.0..1.0),
                 rng.0.random_range(-1.0..1.0),
@@ -232,18 +238,18 @@ fn draw_particles(
 
 // Each particle will be forced to have the velocity matching rotation around the ownings plate axis of rotation
 // Then we adjust that velocity depending on other particles
-fn update_particle_velocities(
+fn simulate(
     mut plate_particles: ResMut<PlateParticles>,
-    plates: Res<Plates>,
-    hex_sphere: Res<HexSphere>,
+    mut plates: ResMut<Plates>,
     tectonics_config: Res<TectonicsConfiguration>,
     mut gizmos: Gizmos,
+    mut rng: ResMut<GlobalRng>,
 ) {
+    // 1. Apply forces from parent plate and other particles
     let new_velocities: Vec<Vec3> = plate_particles
         .0
-        .iter()
+        .par_iter()
         .map(|particle| {
-            // TODO: Multiply by velocity
             let plate_velocity = plates.0[particle.plate_index]
                 .axis_of_rotation
                 .cross(particle.position);
@@ -260,10 +266,10 @@ fn update_particle_velocities(
                     1. / (geodesic_distance / tectonics_config.repulsive_force_modifier).powi(2)
                 } else {
                     1. / (geodesic_distance / tectonics_config.repulsive_force_modifier).powi(2)
-                        * 4.
+                        * 2.
                 };
                 let attraction_force = if particle.plate_index == other_particle.plate_index {
-                    0.
+                    tectonics_config.attractive_force
                 } else {
                     0.
                 };
@@ -274,22 +280,38 @@ fn update_particle_velocities(
                     // TODO this is where we do plate interactions
                 }
             }
-            // Assumes timestep = 1s
-            gizmos.arrow(
-                particle.position,
-                particle.position
-                    + acceleration
-                    + plate_velocity * tectonics_config.plate_force_modifier,
-                plates.0[particle.plate_index].color,
-            );
-            plate_velocity * tectonics_config.plate_force_modifier + acceleration
+            // gizmos.arrow(
+            //     particle.position,
+            //     particle.position
+            //         + acceleration
+            //         + plate_velocity * tectonics_config.plate_force_modifier,
+            //     plates.0[particle.plate_index].color,
+            // );
+            (plate_velocity * tectonics_config.plate_force_modifier + acceleration)
+                * tectonics_config.timestep
         })
         .collect();
+    // 2. Apply new velocity and update position
     for (i, particle) in plate_particles.0.iter_mut().enumerate() {
         particle.velocity = new_velocities[i];
         particle.position = (particle.position + particle.velocity).normalize();
     }
+    // 3. Update the sphere bin datastructure as some particles might leave their current bin
     plate_particles.0.refresh();
+    // 4. Randomly modify each plates axis of rotation slightly
+    for plate in plates.0.iter_mut() {
+        plate.drift_direction = (plate.drift_direction
+            + Vec3::new(
+                rng.0.random_range(-1.0..1.0) * tectonics_config.plate_rotation_drift_rate,
+                rng.0.random_range(-1.0..1.0) * tectonics_config.plate_rotation_drift_rate,
+                rng.0.random_range(-1.0..1.0) * tectonics_config.plate_rotation_drift_rate,
+            ) * tectonics_config.timestep)
+            .normalize();
+        plate.axis_of_rotation = (plate.axis_of_rotation
+            + plate.drift_direction * tectonics_config.plate_rotation_drift_rate / 2.
+                * tectonics_config.timestep)
+            .normalize();
+    }
 }
 
 fn draw_bins(

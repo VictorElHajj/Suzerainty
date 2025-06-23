@@ -12,4 +12,5 @@ pub struct Plate {
     /// All particles within this plate will have a constant force applied to make the particles rotate around this axis
     /// TODO: This should very over time
     pub axis_of_rotation: Vec3,
+    pub drift_direction: Vec3,
 }

@@ -1,12 +1,13 @@
 use std::f32::consts::PI;
 
 use bevy::math::Vec3;
+use rayon::prelude::*;
 
 pub trait GetNormal {
     fn normal(&self) -> Vec3;
 }
 
-pub struct Bin<T: Sized + GetNormal> {
+pub struct Bin<T: Sized + GetNormal + Send> {
     pub normal: Vec3,
     /// Aproximation of how large is bucket is on the sphere
     pub max_geodesic_distance: f32,
@@ -14,11 +15,11 @@ pub struct Bin<T: Sized + GetNormal> {
 }
 
 /// Creates BINS bins equally across a sphere. Items are inserted with a unit sphere normal and put in the closest bucket.
-pub struct SphereBins<const BINS: usize, T: Sized + GetNormal> {
+pub struct SphereBins<const BINS: usize, T: Sized + GetNormal + Send + Sync> {
     pub(crate) bins: [Bin<T>; BINS],
 }
 
-impl<const BINS: usize, T: Sized + GetNormal> SphereBins<BINS, T> {
+impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> {
     pub fn new() -> Self {
         let golden_angle = PI * (3. - f32::sqrt(5.));
         let offset: f32 = 2. / BINS as f32;
@@ -70,9 +71,14 @@ impl<const BINS: usize, T: Sized + GetNormal> SphereBins<BINS, T> {
             })
     }
 
-    /// Returns iterator over all items
+    /// Returns a iterator over all items
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.bins.iter().flat_map(|bin| bin.items.iter())
+    }
+
+    /// Returns a rayon parallel iterator over all items
+    pub fn par_iter(&self) -> impl ParallelIterator<Item = &T> {
+        self.bins.par_iter().flat_map(|bin| bin.items.par_iter())
     }
 
     /// Returns mutable iterator over all items

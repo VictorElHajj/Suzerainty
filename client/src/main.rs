@@ -56,8 +56,10 @@ fn main() {
                     min_plate_size: 15,
                     particle_force_radius: 0.20,
                     repulsive_force_modifier: 0.01,
-                    attractive_force_modifier: 10.,
+                    attractive_force: 0.001,
                     plate_force_modifier: 0.01,
+                    plate_rotation_drift_rate: 0.01,
+                    timestep: 0.3,
                 },
             },
         ))
