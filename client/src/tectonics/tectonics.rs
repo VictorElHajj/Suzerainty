@@ -31,8 +31,12 @@ pub struct TectonicsConfiguration {
     pub min_plate_size: usize,
     /// Radius which describes the maximum distance at which particles interact
     pub particle_force_radius: f32,
-    pub repulsive_force_constant: f32,
-    pub attractive_force_constant: f32,
+    /// Modifier to the plate particle repulsive force, is 4x to particles of other plates
+    pub repulsive_force_modifier: f32,
+    /// Modifier to the plate particle attractive force, only works on particles of same plate
+    pub attractive_force_modifier: f32,
+    /// Modifier to the force applies by the plate rotational axis to plate particles.
+    pub plate_force_modifier: f32,
 }
 
 pub struct TectonicsPlugin {
@@ -253,9 +257,9 @@ fn update_particle_velocities(
                 }
                 let geodesic_distance = f32::acos(particle.position.dot(other_particle.position));
                 let repulsive_force = if particle.plate_index == other_particle.plate_index {
-                    1. / (geodesic_distance / tectonics_config.repulsive_force_constant).powi(2)
+                    1. / (geodesic_distance / tectonics_config.repulsive_force_modifier).powi(2)
                 } else {
-                    1. / (geodesic_distance / tectonics_config.repulsive_force_constant).powi(2)
+                    1. / (geodesic_distance / tectonics_config.repulsive_force_modifier).powi(2)
                         * 4.
                 };
                 let attraction_force = if particle.plate_index == other_particle.plate_index {
@@ -273,10 +277,12 @@ fn update_particle_velocities(
             // Assumes timestep = 1s
             gizmos.arrow(
                 particle.position,
-                particle.position + acceleration * 0.25 + plate_velocity * 0.01,
+                particle.position
+                    + acceleration
+                    + plate_velocity * tectonics_config.plate_force_modifier,
                 plates.0[particle.plate_index].color,
             );
-            plate_velocity * 0.01 + acceleration * 0.25
+            plate_velocity * tectonics_config.plate_force_modifier + acceleration
         })
         .collect();
     for (i, particle) in plate_particles.0.iter_mut().enumerate() {

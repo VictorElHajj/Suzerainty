@@ -55,8 +55,9 @@ fn main() {
                     continental_rate: 0.3,
                     min_plate_size: 15,
                     particle_force_radius: 0.20,
-                    repulsive_force_constant: 0.02,
-                    attractive_force_constant: 10.,
+                    repulsive_force_modifier: 0.01,
+                    attractive_force_modifier: 10.,
+                    plate_force_modifier: 0.01,
                 },
             },
         ))
