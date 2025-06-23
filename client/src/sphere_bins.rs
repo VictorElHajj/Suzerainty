@@ -64,8 +64,23 @@ impl<const BINS: usize, T: Sized + GetNormal> SphereBins<BINS, T> {
                 geodesic_distance < bin.max_geodesic_distance + radius
             })
             .flat_map(|bin| bin.items.iter())
+            .filter(move |item| {
+                let geodesic_distance = f32::acos(normal.dot(item.normal()));
+                geodesic_distance <= radius
+            })
     }
 
+    /// Returns iterator over all items
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.bins.iter().flat_map(|bin| bin.items.iter())
+    }
+
+    /// Returns mutable iterator over all items
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.bins.iter_mut().flat_map(|bin| bin.items.iter_mut())
+    }
+
+    /// Returns item with normal closest to input normal
     pub fn get_closest(&self, normal: Vec3) -> &T {
         self.bins
             .iter()
@@ -85,5 +100,18 @@ impl<const BINS: usize, T: Sized + GetNormal> SphereBins<BINS, T> {
                     .unwrap()
             })
             .expect("Closest bin had no items.")
+    }
+
+    /// Checks all items, if any item is further away from the normal than the maximum expected bucket size, remove and re-add.
+    pub fn refresh(&mut self) {
+        let mut items_outside_bins = Vec::<T>::new();
+        for bin in self.bins.iter_mut() {
+            items_outside_bins.extend(bin.items.extract_if(.., |item| {
+                f32::acos(item.normal().dot(bin.normal)) > bin.max_geodesic_distance
+            }))
+        }
+        for item in items_outside_bins {
+            self.insert(item);
+        }
     }
 }

@@ -33,3 +33,10 @@ Use particles to model the continents and the interactions should hote plates to
 Thermal erosion and wind erosion will then also moderate this.
 
 How to optimize particle lookups? Divide sphere into buckets again, and check all buckets within the particle radius. 
+
+
+### Current order
+1. plate rotation axis needs to change over time
+2. change magic numbers in code to use the constants in config instead, find good values
+3. Replace hard coded plate velocity with a plate force and breaking force
+4. Write vertex update method interpolating from plate particles

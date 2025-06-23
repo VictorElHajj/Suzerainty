@@ -6,7 +6,6 @@ use bevy::{
     render::mesh::{Indices, PrimitiveTopology},
     window::PrimaryWindow,
 };
-use noise::NoiseFn;
 use std::{num::NonZero, time::Instant};
 use subsphere::Vertex;
 use subsphere::{Face, Sphere, proj::Fuller};

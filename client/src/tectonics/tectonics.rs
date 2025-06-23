@@ -1,18 +1,21 @@
 use std::f32::consts::PI;
 
-use bevy::{platform::collections::HashSet, prelude::*};
-use rand::{Rng, seq::index};
+use bevy::{math::NormedVectorSpace, platform::collections::HashSet, prelude::*};
+use rand::Rng;
 
 use crate::{
     GlobalRng,
     hex_sphere::{CurrentMousePick, HexSphere, MousePickInfo},
-    sphere_bins::{self, GetNormal, SphereBins},
+    sphere_bins::{GetNormal, SphereBins},
     states::SimulationState,
     tectonics::{
         particle::PlateParticle,
         plate::{Plate, PlateType},
     },
 };
+
+const OCEANIC_PARTICLE_MASS: f32 = 2.;
+const CONTINENTAL_PARTICLE_MASS: f32 = 3.;
 
 #[derive(Resource, Clone, Copy)]
 pub struct TectonicsConfiguration {
@@ -26,6 +29,10 @@ pub struct TectonicsConfiguration {
     pub continental_rate: f32,
     /// Smallest amount of particles allowed on a plate, if fewer the plate is merged with another
     pub min_plate_size: usize,
+    /// Radius which describes the maximum distance at which particles interact
+    pub particle_force_radius: f32,
+    pub repulsive_force_constant: f32,
+    pub attractive_force_constant: f32,
 }
 
 pub struct TectonicsPlugin {
@@ -35,7 +42,10 @@ impl Plugin for TectonicsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.config)
             .add_systems(OnEnter(SimulationState::Tectonics), setup)
-            .add_systems(Update, draw_particles);
+            .add_systems(
+                Update,
+                (draw_particles, draw_bins, update_particle_velocities),
+            );
     }
 }
 
@@ -56,7 +66,6 @@ fn setup(
     assert!((0.0..=1.0).contains(&tectonics_config.continental_rate));
     let mut generated_majors = 0;
     let mut generated_minors = 0;
-    let mut generated_plates = 0;
     let mut plates = Vec::<Plate>::new();
     let mut particle_bins = SphereBins::<100, PlateParticle>::new();
 
@@ -71,13 +80,8 @@ fn setup(
 
     // Pick a random tile to seed the selection, will always be continent 0, which is also always continental and not oceanic
     let starting_tile = rng.0.random_range(0..hex_sphere.tiles.len());
-    particle_bins.insert(PlateParticle {
-        position: hex_sphere.tiles[starting_tile].normal,
-        height: 1.,
-        plate_index: 0,
-    });
     let mut global_surrounding_unvisited_tiles = Vec::<usize>::new();
-    let mut next_surrounding_unvisited_tiles = hex_sphere.tiles[starting_tile].adjacent.clone();
+    let mut next_surrounding_unvisited_tiles = vec![starting_tile];
     let mut added_tiles = HashSet::<usize>::new();
     added_tiles.insert(starting_tile);
 
@@ -89,20 +93,24 @@ fn setup(
             } else {
                 PlateType::Oceanic
             };
-        plates.push(Plate {
-            plate_type,
+        let plate = Plate {
+            plate_type: plate_type.clone(),
             color: plate_color,
-        });
+            axis_of_rotation: Vec3::new(
+                rng.0.random_range(-1.0..1.0),
+                rng.0.random_range(-1.0..1.0),
+                rng.0.random_range(-1.0..1.0),
+            )
+            .normalize(),
+        };
         // Generate minor plate if we have more major plates than minor plates but there are still minor plates left to generate
         let tiles_to_take = if (generated_majors as f32 / generated_minors as f32)
             > tectonics_config.major_plate_fraction
         {
             generated_minors += 1;
-            generated_plates += 1;
             minor_tile_count
         } else {
             generated_majors += 1;
-            generated_plates += 1;
             major_tile_count
         };
 
@@ -126,7 +134,13 @@ fn setup(
             temp_particle_vec.push(PlateParticle {
                 position: chosen_tile.normal,
                 height: 1.0,
-                plate_index: generated_plates - 1,
+                plate_index: plates.len(),
+                mass: if plate_type == PlateType::Continental {
+                    CONTINENTAL_PARTICLE_MASS
+                } else {
+                    OCEANIC_PARTICLE_MASS
+                },
+                velocity: plate.axis_of_rotation.cross(chosen_tile.normal) * 0.005,
             });
 
             // Update univisted tiles with new adjacents
@@ -139,6 +153,7 @@ fn setup(
         }
 
         if temp_particle_vec.len() >= tectonics_config.min_plate_size {
+            plates.push(plate);
             for particle in temp_particle_vec {
                 particle_bins.insert(particle);
             }
@@ -153,6 +168,14 @@ fn setup(
                     position: particle.position,
                     height: particle.height,
                     plate_index: closest_plate_index,
+                    mass: if plates[closest_plate_index].plate_type == PlateType::Continental {
+                        CONTINENTAL_PARTICLE_MASS
+                    } else {
+                        OCEANIC_PARTICLE_MASS
+                    },
+                    velocity: plates[closest_plate_index]
+                        .axis_of_rotation
+                        .cross(particle.position),
                 });
             }
         }
@@ -179,6 +202,13 @@ fn draw_particles(
     plates: Res<Plates>,
     hex_sphere: Res<HexSphere>,
 ) {
+    for plate in &plates.0 {
+        gizmos.arrow(
+            plate.axis_of_rotation,
+            plate.axis_of_rotation * 1.5,
+            plate.color,
+        );
+    }
     for particle in plate_particles
         .0
         .bins
@@ -193,5 +223,95 @@ fn draw_particles(
             16. * PI / hex_sphere.tiles.len() as f32,
             plates.0[particle.plate_index].color,
         );
+    }
+}
+
+// Each particle will be forced to have the velocity matching rotation around the ownings plate axis of rotation
+// Then we adjust that velocity depending on other particles
+fn update_particle_velocities(
+    mut plate_particles: ResMut<PlateParticles>,
+    plates: Res<Plates>,
+    hex_sphere: Res<HexSphere>,
+    tectonics_config: Res<TectonicsConfiguration>,
+    mut gizmos: Gizmos,
+) {
+    let new_velocities: Vec<Vec3> = plate_particles
+        .0
+        .iter()
+        .map(|particle| {
+            // TODO: Multiply by velocity
+            let plate_velocity = plates.0[particle.plate_index]
+                .axis_of_rotation
+                .cross(particle.position);
+            let mut acceleration = Vec3::ZERO;
+            for other_particle in plate_particles
+                .0
+                .get_within(particle.position, tectonics_config.particle_force_radius)
+            {
+                if particle == other_particle {
+                    continue;
+                }
+                let geodesic_distance = f32::acos(particle.position.dot(other_particle.position));
+                let repulsive_force = if particle.plate_index == other_particle.plate_index {
+                    1. / (geodesic_distance / tectonics_config.repulsive_force_constant).powi(2)
+                } else {
+                    1. / (geodesic_distance / tectonics_config.repulsive_force_constant).powi(2)
+                        * 4.
+                };
+                let attraction_force = if particle.plate_index == other_particle.plate_index {
+                    0.
+                } else {
+                    0.
+                };
+                acceleration += (repulsive_force - attraction_force)
+                    * (particle.position - other_particle.position)
+                    / particle.mass;
+                if particle.plate_index != other_particle.plate_index {
+                    // TODO this is where we do plate interactions
+                }
+            }
+            // Assumes timestep = 1s
+            gizmos.arrow(
+                particle.position,
+                particle.position + acceleration * 0.25 + plate_velocity * 0.01,
+                plates.0[particle.plate_index].color,
+            );
+            plate_velocity * 0.01 + acceleration * 0.25
+        })
+        .collect();
+    for (i, particle) in plate_particles.0.iter_mut().enumerate() {
+        particle.velocity = new_velocities[i];
+        particle.position = (particle.position + particle.velocity).normalize();
+    }
+    plate_particles.0.refresh();
+}
+
+fn draw_bins(
+    mut gizmos: Gizmos,
+    bins: Res<PlateParticles>,
+    tectonics_config: Res<TectonicsConfiguration>,
+    current_mouse_pick: Res<CurrentMousePick>,
+) {
+    if let Some(MousePickInfo { tile, normal }) = &current_mouse_pick.0 {
+        gizmos.circle(
+            Isometry3d {
+                rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
+                translation: (normal * tile.height).into(),
+            },
+            tectonics_config.particle_force_radius,
+            LinearRgba::BLUE,
+        );
+        // for particle in bins
+        //     .0
+        //     .get_within(*normal, tectonics_config.particle_force_radius)
+        // {
+        //     let geodesic_distance = f32::acos(normal.dot(particle.position));
+        //     let distance_fraction = geodesic_distance / tectonics_config.particle_force_radius;
+        //     gizmos.arrow(
+        //         particle.position,
+        //         particle.position * (1.1 - distance_fraction / 10.),
+        //         LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
+        //     );
+        // }
     }
 }

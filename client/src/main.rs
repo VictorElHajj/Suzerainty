@@ -51,9 +51,12 @@ fn main() {
                 config: TectonicsConfiguration {
                     major_plate_fraction: 0.5,
                     major_tile_fraction: 0.75,
-                    plate_goal: 12,
+                    plate_goal: 10,
                     continental_rate: 0.3,
                     min_plate_size: 15,
+                    particle_force_radius: 0.20,
+                    repulsive_force_constant: 0.02,
+                    attractive_force_constant: 10.,
                 },
             },
         ))
