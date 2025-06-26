@@ -36,7 +36,5 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 
 
 ### Current order
-1. Add tectonic simulation time to debug ui
-2. Write vertex update method interpolating from plate particles
-
-Model fluid rigidity?
+1. Write vertex update method interpolating from plate particles
+2. Seperate particle count from subdivisions

@@ -17,6 +17,7 @@ impl Plugin for DebugUIPlugin {
         app.add_systems(PreStartup, setup)
             .add_systems(Update, update_fps)
             .add_systems(OnExit(SimulationState::MeshGen), add_mesh_gen_stats)
+            .add_systems(OnExit(SimulationState::Tectonics), tectonics_add_time)
             .add_systems(
                 Update,
                 update_state_text.run_if(state_changed::<SimulationState>),
@@ -34,6 +35,7 @@ pub struct DebugDiagnostics {
     pub subdivisions: Option<u32>,
     pub tiles: Option<usize>,
     pub mesh_gen_time: Option<Duration>,
+    pub tectonics_time: Option<Duration>,
 }
 
 impl DebugDiagnostics {
@@ -43,6 +45,7 @@ impl DebugDiagnostics {
             subdivisions: None,
             tiles: None,
             mesh_gen_time: None,
+            tectonics_time: None,
         }
     }
 }
@@ -71,6 +74,9 @@ struct TectonicsParticleText;
 #[derive(Component)]
 struct TectonicsIterationText;
 
+#[derive(Component)]
+struct TectonicsTimeText;
+
 fn update_fps(
     bevy_diagnostics: Res<DiagnosticsStore>,
     mut fps_text_query: Query<&mut Text, With<FpsText>>,
@@ -88,6 +94,20 @@ fn update_state_text(
     current_state: Res<State<SimulationState>>,
 ) {
     **state_text_query.single_mut().unwrap() = current_state.to_string();
+}
+
+fn tectonics_add_time(
+    diagnostics: Res<DebugDiagnostics>,
+    mut tectonics_time_query: Query<&mut Text, With<TectonicsTimeText>>,
+) {
+    let tectonics_duration = diagnostics
+        .tectonics_time
+        .expect("Tectonics time should be set be set during Tectonics state");
+    **tectonics_time_query.single_mut().unwrap() = format!(
+        "{}.{}s",
+        tectonics_duration.as_secs(),
+        tectonics_duration.subsec_millis()
+    );
 }
 
 fn add_mesh_gen_stats(
@@ -477,6 +497,36 @@ fn setup(
                             )
                         ]
                     ),
+                    (
+                        Node {
+                            width: Val::Percent(100.),
+                            ..Default::default()
+                        },
+                        children![
+                            (
+                                Text::new("Time: "),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                    font_size: 12.0,
+                                    ..default()
+                                }
+                            ),
+                            (
+                                Node {
+                                    margin: UiRect::left(Val::Auto),
+                                    ..Default::default()
+                                },
+                                Text::default(),
+                                TextFont {
+                                    font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+                                    font_size: 12.0,
+                                    ..Default::default()
+                                },
+                                TextColor(palettes::css::GOLD.into()),
+                                TectonicsTimeText
+                            )
+                        ]
+                    )
                 ]
             ),
             (

@@ -60,7 +60,7 @@ fn main() {
                     plate_force_modifier: 0.01,
                     plate_rotation_drift_rate: 0.02,
                     timestep: 0.3,
-                    iterations: 10_000,
+                    iterations: 200,
                     friction_coefficient: 0.5,
                 },
             },

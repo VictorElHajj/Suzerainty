@@ -6,6 +6,7 @@ use rand::Rng;
 
 use crate::{
     GlobalRng,
+    debug_ui::DebugDiagnostics,
     hex_sphere::{CurrentMousePick, HexSphere, MousePickInfo},
     sphere_bins::{GetNormal, SphereBins},
     states::SimulationState,
@@ -70,12 +71,16 @@ struct Plates(Vec<Plate>);
 // This should be the square root of the particle count
 const BIN_COUNT: usize = 60;
 
+#[derive(Resource)]
+struct TectonicsStartTime(std::time::Instant);
+
 fn setup(
     mut commands: Commands,
     hex_sphere: Res<HexSphere>,
     tectonics_config: Res<TectonicsConfiguration>,
     mut rng: ResMut<GlobalRng>,
 ) {
+    commands.insert_resource(TectonicsStartTime(std::time::Instant::now()));
     assert!((0.0..=1.0).contains(&tectonics_config.major_tile_fraction));
     assert!((0.0..=1.0).contains(&tectonics_config.major_plate_fraction));
     assert!((0.0..=1.0).contains(&tectonics_config.continental_rate));
@@ -183,7 +188,6 @@ fn setup(
                 .get_closest(temp_particle_vec[0].normal())
                 .plate_index;
             for particle in temp_particle_vec {
-                // TODO: Height and velocity should use the new plates initial values rather than keeping the old
                 particle_bins.insert(PlateParticle {
                     position: particle.position,
                     height: particle.height,
@@ -252,8 +256,11 @@ fn simulate(
     tectonics_config: Res<TectonicsConfiguration>,
     mut rng: ResMut<GlobalRng>,
     mut tectonics_iteration: ResMut<TectonicsIteration>,
+    tectonics_start_time: Res<TectonicsStartTime>,
+    mut debug_diagnostics: ResMut<DebugDiagnostics>,
+    mut next_state: ResMut<NextState<SimulationState>>,
 ) {
-    if tectonics_iteration.0 <= tectonics_config.iterations {
+    if tectonics_iteration.0 < tectonics_config.iterations {
         // 1. Calculate acceleration for each particle
         let particle_accelerations: Vec<Vec3> = plate_particles
             .0
@@ -322,6 +329,9 @@ fn simulate(
                 .normalize();
         }
         tectonics_iteration.0 += 1;
+    } else {
+        debug_diagnostics.tectonics_time = Some(tectonics_start_time.0.elapsed());
+        next_state.set(SimulationState::Erosion);
     }
 }
 
