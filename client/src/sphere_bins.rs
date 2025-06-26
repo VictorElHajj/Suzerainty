@@ -83,6 +83,13 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
         self.bins.par_iter().flat_map(|bin| bin.items.par_iter())
     }
 
+    /// Returns a rayon parallel mutable iterator over all items
+    pub fn par_iter_mut(&mut self) -> impl ParallelIterator<Item = &mut T> {
+        self.bins
+            .par_iter_mut()
+            .flat_map(|bin| bin.items.par_iter_mut())
+    }
+
     /// Returns mutable iterator over all items
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.bins.iter_mut().flat_map(|bin| bin.items.iter_mut())
@@ -92,11 +99,15 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
     pub fn get_closest(&self, normal: Vec3) -> &T {
         self.bins
             .iter()
+            .filter(|bin| bin.items.len() > 0)
             .max_by(|a, b| {
                 normal
                     .dot(a.normal)
                     .partial_cmp(&normal.dot(b.normal))
-                    .unwrap()
+                    .expect(&format!(
+                        "Failed to compare {:?} with {:?}",
+                        a.normal, b.normal
+                    ))
             })
             .expect("Sphere Bin had no bins.")
             .items
@@ -105,9 +116,44 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
                 normal
                     .dot(a.normal())
                     .partial_cmp(&normal.dot(b.normal()))
-                    .unwrap()
+                    .expect(&format!(
+                        "Failed to compare {:?} with {:?}",
+                        a.normal(),
+                        b.normal()
+                    ))
             })
-            .expect("Closest bin had no items.")
+            .unwrap()
+    }
+
+    /// Returns item with normal closest to input normal, not icluding input normal
+    pub fn get_closest_other(&self, normal: Vec3) -> &T {
+        self.bins
+            .iter()
+            .filter(|bin| bin.items.len() > 0)
+            .max_by(|a, b| {
+                normal
+                    .dot(a.normal)
+                    .partial_cmp(&normal.dot(b.normal))
+                    .expect(&format!(
+                        "Failed to compare {:?} with {:?}",
+                        a.normal, b.normal
+                    ))
+            })
+            .expect("Sphere Bin had no bins.")
+            .items
+            .iter()
+            .filter(|particle| particle.normal() != normal)
+            .max_by(|a, b| {
+                normal
+                    .dot(a.normal())
+                    .partial_cmp(&normal.dot(b.normal()))
+                    .expect(&format!(
+                        "Failed to compare {:?} with {:?}",
+                        a.normal(),
+                        b.normal()
+                    ))
+            })
+            .expect("Bin was empty, or all bins were empty?? Should not happen")
     }
 
     /// Checks all items, if any item is further away from the normal than the maximum expected bucket size, remove and re-add.
@@ -119,6 +165,7 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
             }))
         }
         for item in items_outside_bins {
+            self.count -= 1;
             self.insert(item);
         }
     }
