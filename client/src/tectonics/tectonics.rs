@@ -120,9 +120,9 @@ fn setup(
                 rng.0.random_range(-1.0..1.0),
                 rng.0.random_range(-1.0..1.0),
                 rng.0.random_range(-1.0..1.0),
-            ),
-            drift_direction: Vec3::new(
-                rng.0.random_range(-1.0..1.0),
+            )
+            .normalize(),
+            drift_direction: Vec2::new(
                 rng.0.random_range(-1.0..1.0),
                 rng.0.random_range(-1.0..1.0),
             )
@@ -166,6 +166,7 @@ fn setup(
                     OCEANIC_PARTICLE_MASS
                 },
                 velocity: Vec3::ZERO,
+                acceleration: Vec3::ZERO,
             });
 
             // Update univisted tiles with new adjacents
@@ -198,6 +199,7 @@ fn setup(
                         OCEANIC_PARTICLE_MASS
                     },
                     velocity: Vec3::ZERO,
+                    acceleration: Vec3::ZERO,
                 });
             }
         }
@@ -262,7 +264,7 @@ fn simulate(
 ) {
     if tectonics_iteration.0 < tectonics_config.iterations {
         // 1. Calculate acceleration for each particle
-        let particle_accelerations: Vec<Vec3> = plate_particles
+        let new_particle_accelerations: Vec<Vec3> = plate_particles
             .0
             .par_iter()
             .map(|particle| {
@@ -307,26 +309,37 @@ fn simulate(
             })
             .collect();
         // 2. Apply forces and update velocity and position
+        // We used a Velocity Verlet integration
         for (i, particle) in plate_particles.0.iter_mut().enumerate() {
-            particle.velocity =
-                particle.velocity + particle_accelerations[i] * tectonics_config.timestep;
-            particle.position = (particle.position + particle.velocity).normalize();
+            particle.position = (particle.position
+                + particle.velocity * tectonics_config.timestep
+                + 0.5 * particle.acceleration * tectonics_config.timestep.powi(2))
+            .normalize();
+            particle.velocity = particle.velocity
+                + (particle.acceleration + new_particle_accelerations[i]) / 2.
+                    * tectonics_config.timestep;
+            particle.acceleration = new_particle_accelerations[i];
         }
         // 3. Update the sphere bin datastructure as some particles might leave their current bin
         plate_particles.0.refresh();
         // 4. Randomly modify each plates axis of rotation slightly
         for plate in plates.0.iter_mut() {
             plate.drift_direction = (plate.drift_direction
-                + Vec3::new(
-                    rng.0.random_range(-1.0..1.0) * tectonics_config.plate_rotation_drift_rate,
+                + Vec2::new(
                     rng.0.random_range(-1.0..1.0) * tectonics_config.plate_rotation_drift_rate,
                     rng.0.random_range(-1.0..1.0) * tectonics_config.plate_rotation_drift_rate,
                 ) * tectonics_config.timestep)
                 .normalize();
-            plate.axis_of_rotation = (plate.axis_of_rotation
-                + plate.drift_direction * tectonics_config.plate_rotation_drift_rate / 2.
-                    * tectonics_config.timestep)
-                .normalize();
+            plate.axis_of_rotation = Quat::from_euler(
+                EulerRot::XYZ,
+                plate.drift_direction.x * tectonics_config.plate_rotation_drift_rate,
+                plate.drift_direction.y * tectonics_config.plate_rotation_drift_rate,
+                0.,
+            ) * plate.axis_of_rotation;
+            // plate.axis_of_rotation = (plate.axis_of_rotation
+            //     + plate.drift_direction * tectonics_config.plate_rotation_drift_rate / 2.
+            //         * tectonics_config.timestep)
+            //     .normalize();
         }
         tectonics_iteration.0 += 1;
     } else {

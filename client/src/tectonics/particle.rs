@@ -10,8 +10,10 @@ pub struct PlateParticle {
     /// Index to plate
     pub plate_index: usize,
     pub mass: f32,
-    /// Velicity in spherical coordinates
+    /// Velicity
     pub velocity: Vec3,
+    /// Acceleration
+    pub acceleration: Vec3,
 }
 
 impl GetNormal for PlateParticle {

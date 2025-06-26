@@ -1,4 +1,7 @@
-use bevy::{color::Color, math::Vec3};
+use bevy::{
+    color::Color,
+    math::{Vec2, Vec3},
+};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PlateType {
@@ -9,8 +12,6 @@ pub enum PlateType {
 pub struct Plate {
     pub plate_type: PlateType,
     pub color: Color,
-    /// All particles within this plate will have a constant force applied to make the particles rotate around this axis
-    /// TODO: This should very over time
     pub axis_of_rotation: Vec3,
-    pub drift_direction: Vec3,
+    pub drift_direction: Vec2,
 }
