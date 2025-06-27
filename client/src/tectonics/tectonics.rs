@@ -20,7 +20,7 @@ use crate::{
 
 const OCEANIC_PARTICLE_MASS: f32 = 1.;
 const OCEANIC_PARTICLE_HEIGHT: f32 = 0.98;
-const CONTINENTAL_PARTICLE_MASS: f32 = 3.;
+const CONTINENTAL_PARTICLE_MASS: f32 = 5.;
 const CONTINENTAL_PARTICLE_HEIGHT: f32 = 1.02;
 
 #[derive(Resource, Clone, Copy)]
@@ -297,7 +297,9 @@ fn simulate(
                 let plate_force = plates.0[particle.plate_index]
                     .axis_of_rotation
                     .cross(particle.position)
-                    * tectonics_config.plate_force_modifier;
+                    * tectonics_config.plate_force_modifier
+                    // We make this force mass independent so oceanic and continental plates move equally
+                    * particle.mass;
                 let friction_force = if particle.velocity.length() > 0. {
                     -particle.velocity * particle.mass * tectonics_config.friction_coefficient
                 } else {

@@ -37,4 +37,3 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 
 ### Current order
 Try to create and remove particles instead of using forces. Create if none are within a tile, and remove if overlapping.
-The attraction / repulsion need to take into account the mass of the other particle
