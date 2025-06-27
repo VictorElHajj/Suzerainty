@@ -14,6 +14,7 @@ pub struct PlateParticle {
     pub velocity: Vec3,
     /// Acceleration
     pub acceleration: Vec3,
+    pub id: usize,
 }
 
 impl GetNormal for PlateParticle {

@@ -167,6 +167,7 @@ fn setup(
                 },
                 velocity: Vec3::ZERO,
                 acceleration: Vec3::ZERO,
+                id: chosen_tile.index,
             });
 
             // Update univisted tiles with new adjacents
@@ -200,6 +201,7 @@ fn setup(
                     },
                     velocity: Vec3::ZERO,
                     acceleration: Vec3::ZERO,
+                    id: particle.id,
                 });
             }
         }
@@ -283,7 +285,7 @@ fn simulate(
                     .0
                     .get_within(particle.position, tectonics_config.particle_force_radius)
                 {
-                    if particle == other_particle {
+                    if particle.id == other_particle.id {
                         continue;
                     }
                     let geodesic_distance =
