@@ -3,5 +3,6 @@ pub use tile::*;
 mod hex_sphere;
 pub mod vec_utils;
 pub use hex_sphere::{
-    CurrentMousePick, HexSphere, HexSphereConfig, HexSpherePlugin, MousePickInfo,
+    CurrentMousePick, HexSphere, HexSphereConfig, HexSphereMeshHandle, HexSpherePlugin,
+    MousePickInfo,
 };

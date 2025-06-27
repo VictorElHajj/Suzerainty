@@ -14,11 +14,14 @@ use crate::{
         ParticleSphere, ParticleSphereConfig,
         particle::PlateParticle,
         plate::{Plate, PlateType},
+        vertex_interpolation::interpolate_vertices,
     },
 };
 
-const OCEANIC_PARTICLE_MASS: f32 = 2.;
+const OCEANIC_PARTICLE_MASS: f32 = 1.;
+const OCEANIC_PARTICLE_HEIGHT: f32 = 0.98;
 const CONTINENTAL_PARTICLE_MASS: f32 = 3.;
+const CONTINENTAL_PARTICLE_HEIGHT: f32 = 1.02;
 
 #[derive(Resource, Clone, Copy)]
 pub struct TectonicsConfiguration {
@@ -61,18 +64,29 @@ impl Plugin for TectonicsPlugin {
             .insert_resource(ParticleSphere::from_config(self.particle_config))
             .insert_resource(TectonicsIteration(0))
             .add_systems(OnEnter(SimulationState::Tectonics), setup)
-            .add_systems(Update, (draw_particles, draw_bins, simulate));
+            .add_systems(
+                Update,
+                (
+                    draw_particles,
+                    draw_bins,
+                    simulate.run_if(in_state(SimulationState::Tectonics)),
+                    interpolate_vertices.run_if(in_state(SimulationState::Tectonics)),
+                ),
+            );
     }
 }
 
+pub const BIN_COUNT: usize = 60;
 #[derive(Resource)]
-struct PlateParticles(SphereBins<BIN_COUNT, PlateParticle>);
+pub struct PlateParticles(
+    pub crate::sphere_bins::SphereBins<BIN_COUNT, super::particle::PlateParticle>,
+);
 
 #[derive(Resource)]
 struct Plates(Vec<Plate>);
 
 // This should be the square root of the particle count
-const BIN_COUNT: usize = 60;
+// const BIN_COUNT: usize = 60;
 
 #[derive(Resource)]
 struct TectonicsStartTime(std::time::Instant);
@@ -107,7 +121,8 @@ fn setup(
     added_tiles.insert(starting_tile);
 
     while added_tiles.len() < particle_sphere.tiles.len() {
-        let plate_color = LinearRgba::rgb(rng.0.random(), rng.0.random(), rng.0.random()).into();
+        let plate_color =
+            LinearRgba::new(rng.0.random(), rng.0.random(), rng.0.random(), 0.1).into();
         let plate_type =
             if (added_tiles.len() as f32 / tile_count as f32) < tectonics_config.continental_rate {
                 PlateType::Continental
@@ -159,7 +174,11 @@ fn setup(
             // Create particle from chosen tile
             temp_particle_vec.push(PlateParticle {
                 position: chosen_tile.normal,
-                height: 1.0,
+                height: if plate_type == PlateType::Continental {
+                    CONTINENTAL_PARTICLE_HEIGHT
+                } else {
+                    OCEANIC_PARTICLE_HEIGHT
+                },
                 plate_index: plates.len(),
                 mass: if plate_type == PlateType::Continental {
                     CONTINENTAL_PARTICLE_MASS
@@ -193,7 +212,11 @@ fn setup(
             for particle in temp_particle_vec {
                 particle_bins.insert(PlateParticle {
                     position: particle.position,
-                    height: particle.height,
+                    height: if plates[closest_plate_index].plate_type == PlateType::Continental {
+                        CONTINENTAL_PARTICLE_HEIGHT
+                    } else {
+                        OCEANIC_PARTICLE_HEIGHT
+                    },
                     plate_index: closest_plate_index,
                     mass: if plates[closest_plate_index].plate_type == PlateType::Continental {
                         CONTINENTAL_PARTICLE_MASS
@@ -232,7 +255,7 @@ fn draw_particles(
     for plate in &plates.0 {
         gizmos.arrow(
             plate.axis_of_rotation,
-            plate.axis_of_rotation * 1.5,
+            plate.axis_of_rotation * 1.1,
             plate.color,
         );
     }
@@ -244,7 +267,7 @@ fn draw_particles(
     {
         gizmos.cross(
             Isometry3d {
-                translation: particle.position.into(),
+                translation: (particle.position * particle.height).into(),
                 rotation: Quat::from_rotation_arc(Vec3::Z, particle.position),
             },
             16. * PI / particle_sphere.tiles.len() as f32,

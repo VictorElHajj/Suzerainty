@@ -18,6 +18,8 @@ pub struct HexSphere {
     pub vertices: Vec<[f32; 3]>,
     /// Essentially a wrapper around [subsphere::hex::Face<Fuller>], modified with a central vertex and height
     pub tiles: Vec<Tile>,
+    /// For each vertex, the indices of the tiles it is adjacent to
+    pub vertices_to_tiles: Vec<Vec<usize>>,
 }
 
 impl HexSphere {
@@ -46,6 +48,9 @@ impl Plugin for HexSpherePlugin {
     }
 }
 
+#[derive(Resource)]
+pub struct HexSphereMeshHandle(pub Handle<Mesh>);
+
 fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -70,9 +75,9 @@ fn setup(
     let num_hexagons = hex_sphere.num_faces() - num_pentagons;
     let num_vertices = num_pentagons * 6 + num_hexagons * 7;
     let num_faces = hex_sphere.num_faces();
-    println!("Faces: {:?}", num_faces);
 
     let mut vertices: Vec<[f32; 3]> = Vec::with_capacity(num_vertices);
+    let mut vertices_to_tiles: Vec<Vec<usize>> = vec![Vec::new(); num_vertices];
     let mut tiles: Vec<Tile> = Vec::with_capacity(num_faces);
     let mut triangles: Vec<u32> = Vec::with_capacity(num_hexagons * 6 + num_pentagons + 5);
     let mut colors: Vec<[f32; 4]> = vec![[0.; 4]; num_vertices];
@@ -121,7 +126,6 @@ fn setup(
 
         for index in &face_vertex_indices {
             colors[*index] = face_color;
-            // normals[index] = face_normal;
         }
 
         let mut adjacent = face
@@ -131,6 +135,12 @@ fn setup(
             .collect::<Vec<usize>>();
         adjacent.sort_unstable();
         adjacent.dedup();
+
+        vertices_to_tiles[face_center_index] = vec![];
+        for (i, vertex) in face.vertices().enumerate() {
+            vertices_to_tiles[face_vertex_indices[i]] =
+                vertex.faces().map(|f| f.index()).collect::<Vec<usize>>();
+        }
 
         tiles.push(Tile {
             index: i,
@@ -146,6 +156,7 @@ fn setup(
         subsphere: hex_sphere,
         tiles,
         vertices: vertices.clone(),
+        vertices_to_tiles,
     });
 
     let mut mesh = Mesh::new(
@@ -157,8 +168,7 @@ fn setup(
     .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.compute_normals();
     let mesh_handle = meshes.add(mesh);
-
-    println!("Mesh processing done.");
+    commands.insert_resource(HexSphereMeshHandle(mesh_handle.clone()));
 
     // Render the mesh with the custom texture, and add the marker.
     commands.spawn((

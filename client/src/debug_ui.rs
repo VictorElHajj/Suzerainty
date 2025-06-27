@@ -5,7 +5,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 
 use crate::states::SimulationState;
-use crate::tectonics::TectonicsIteration;
+use crate::tectonics::{ParticleSphere, PlateParticles, TectonicsIteration};
 
 #[derive(Copy, Clone)]
 pub struct DebugUIPlugin {
@@ -145,16 +145,16 @@ fn add_mesh_gen_stats(
 }
 
 fn update_tectonics(
-    diagnostics: Res<DebugDiagnostics>,
+    particles: Res<PlateParticles>,
     tectonics_iteration: Res<TectonicsIteration>,
     mut texts: ParamSet<(
         Query<&mut Text, With<TectonicsParticleText>>,
         Query<&mut Text, With<TectonicsIterationText>>,
     )>,
 ) {
-    **texts.p0().single_mut().unwrap() = diagnostics
-        .tiles
-        .expect("Tiles should be set during MeshGen state")
+    **texts.p0().single_mut().unwrap() = particles
+        .0
+        .count()
         .to_string()
         // Thousands seperator
         .as_bytes()
