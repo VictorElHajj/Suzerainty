@@ -1,16 +1,17 @@
 use rayon::prelude::*;
 use std::f32::consts::PI;
 
-use bevy::{math::VectorSpace, platform::collections::HashSet, prelude::*};
+use bevy::{platform::collections::HashSet, prelude::*};
 use rand::Rng;
 
 use crate::{
     GlobalRng,
     debug_ui::DebugDiagnostics,
-    hex_sphere::{CurrentMousePick, HexSphere, MousePickInfo},
+    hex_sphere::{CurrentMousePick, MousePickInfo},
     sphere_bins::{GetNormal, SphereBins},
     states::SimulationState,
     tectonics::{
+        ParticleSphere, ParticleSphereConfig,
         particle::PlateParticle,
         plate::{Plate, PlateType},
     },
@@ -51,11 +52,13 @@ pub struct TectonicsConfiguration {
 pub struct TectonicsIteration(pub usize);
 
 pub struct TectonicsPlugin {
-    pub config: TectonicsConfiguration,
+    pub tectonics_config: TectonicsConfiguration,
+    pub particle_config: ParticleSphereConfig,
 }
 impl Plugin for TectonicsPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(self.config)
+        app.insert_resource(self.tectonics_config)
+            .insert_resource(ParticleSphere::from_config(self.particle_config))
             .insert_resource(TectonicsIteration(0))
             .add_systems(OnEnter(SimulationState::Tectonics), setup)
             .add_systems(Update, (draw_particles, draw_bins, simulate));
@@ -76,7 +79,7 @@ struct TectonicsStartTime(std::time::Instant);
 
 fn setup(
     mut commands: Commands,
-    hex_sphere: Res<HexSphere>,
+    particle_sphere: Res<ParticleSphere>,
     tectonics_config: Res<TectonicsConfiguration>,
     mut rng: ResMut<GlobalRng>,
 ) {
@@ -89,8 +92,7 @@ fn setup(
     let mut plates = Vec::<Plate>::new();
     let mut particle_bins = SphereBins::<BIN_COUNT, PlateParticle>::new();
 
-    // There is a bit of heuristics here, like the magic / 2. This is not a perfect technique.
-    let tile_count = hex_sphere.tiles.len();
+    let tile_count = particle_sphere.tiles.len();
     let major_tile_count: usize = (tile_count as f32 * tectonics_config.major_tile_fraction
         / (tectonics_config.plate_goal as f32 / 2.)
         / tectonics_config.major_plate_fraction) as usize;
@@ -98,14 +100,13 @@ fn setup(
         / (tectonics_config.plate_goal as f32 / 2.)
         / (1. - tectonics_config.major_plate_fraction)) as usize;
 
-    // Pick a random tile to seed the selection, will always be continent 0, which is also always continental and not oceanic
-    let starting_tile = rng.0.random_range(0..hex_sphere.tiles.len());
+    let starting_tile = rng.0.random_range(0..particle_sphere.tiles.len());
     let mut global_surrounding_unvisited_tiles = Vec::<usize>::new();
     let mut next_surrounding_unvisited_tiles = vec![starting_tile];
     let mut added_tiles = HashSet::<usize>::new();
     added_tiles.insert(starting_tile);
 
-    while added_tiles.len() < hex_sphere.tiles.len() {
+    while added_tiles.len() < particle_sphere.tiles.len() {
         let plate_color = LinearRgba::rgb(rng.0.random(), rng.0.random(), rng.0.random()).into();
         let plate_type =
             if (added_tiles.len() as f32 / tile_count as f32) < tectonics_config.continental_rate {
@@ -152,7 +153,7 @@ fn setup(
                 .0
                 .random_range(0..next_surrounding_unvisited_tiles.len());
             added_tiles.insert(next_surrounding_unvisited_tiles[random_adjacent_tile_index]);
-            let chosen_tile = &hex_sphere.tiles
+            let chosen_tile = &particle_sphere.tiles
                 [next_surrounding_unvisited_tiles.swap_remove(random_adjacent_tile_index)];
 
             // Create particle from chosen tile
@@ -210,7 +211,7 @@ fn setup(
         global_surrounding_unvisited_tiles.extend(&next_surrounding_unvisited_tiles);
         global_surrounding_unvisited_tiles.retain(|index| !added_tiles.contains(index));
         // Pick a new starting point for the global unvisited, if there are tiles left
-        if !(added_tiles.len() == hex_sphere.tiles.len()) {
+        if !(added_tiles.len() == particle_sphere.tiles.len()) {
             next_surrounding_unvisited_tiles = vec![
                 global_surrounding_unvisited_tiles[rng
                     .0
@@ -226,7 +227,7 @@ fn draw_particles(
     mut gizmos: Gizmos,
     plate_particles: Res<PlateParticles>,
     plates: Res<Plates>,
-    hex_sphere: Res<HexSphere>,
+    particle_sphere: Res<ParticleSphere>,
 ) {
     for plate in &plates.0 {
         gizmos.arrow(
@@ -246,7 +247,7 @@ fn draw_particles(
                 translation: particle.position.into(),
                 rotation: Quat::from_rotation_arc(Vec3::Z, particle.position),
             },
-            16. * PI / hex_sphere.tiles.len() as f32,
+            16. * PI / particle_sphere.tiles.len() as f32,
             plates.0[particle.plate_index].color,
         );
     }
@@ -355,7 +356,7 @@ fn simulate(
 
 fn draw_bins(
     mut gizmos: Gizmos,
-    bins: Res<PlateParticles>,
+    // bins: Res<PlateParticles>,
     tectonics_config: Res<TectonicsConfiguration>,
     current_mouse_pick: Res<CurrentMousePick>,
 ) {

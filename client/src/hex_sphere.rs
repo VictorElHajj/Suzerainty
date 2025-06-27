@@ -1,7 +1,7 @@
 mod tile;
 pub use tile::*;
 mod hex_sphere;
-mod vec_utils;
+pub mod vec_utils;
 pub use hex_sphere::{
     CurrentMousePick, HexSphere, HexSphereConfig, HexSpherePlugin, MousePickInfo,
 };

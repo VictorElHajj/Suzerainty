@@ -19,7 +19,7 @@ use crate::{
     debug_ui::{DebugDiagnostics, DebugUIPlugin},
     hex_sphere::{HexSphereConfig, HexSpherePlugin},
     states::SimulationState,
-    tectonics::{TectonicsConfiguration, TectonicsPlugin},
+    tectonics::{ParticleSphere, ParticleSphereConfig, TectonicsConfiguration, TectonicsPlugin},
 };
 
 fn main() {
@@ -48,7 +48,7 @@ fn main() {
                 config: HexSphereConfig { subdivisions: 32 },
             },
             TectonicsPlugin {
-                config: TectonicsConfiguration {
+                tectonics_config: TectonicsConfiguration {
                     major_plate_fraction: 0.5,
                     major_tile_fraction: 0.75,
                     plate_goal: 10,
@@ -63,6 +63,7 @@ fn main() {
                     iterations: 2000,
                     friction_coefficient: 0.5,
                 },
+                particle_config: ParticleSphereConfig { subdivisions: 32 },
             },
         ))
         .add_systems(Startup, setup)
