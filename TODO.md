@@ -38,3 +38,5 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 ### Current order
 1. Write vertex update method interpolating from plate particles
 2. Seperate particle count from subdivisions
+
+Try to create and remove particles instead of using forces. Create if none are within a tile, and remove if overlapping.

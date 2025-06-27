@@ -311,10 +311,17 @@ fn simulate(
         // 2. Apply forces and update velocity and position
         // We used a Velocity Verlet integration
         for (i, particle) in plate_particles.0.iter_mut().enumerate() {
-            particle.position = (particle.position
-                + particle.velocity * tectonics_config.timestep
-                + 0.5 * particle.acceleration * tectonics_config.timestep.powi(2))
-            .normalize();
+            let displacement = particle.velocity * tectonics_config.timestep
+                + 0.5 * particle.acceleration * tectonics_config.timestep.powi(2);
+            // Project displacement onto tangent plane of current position
+            let tangent_disp =
+                displacement - particle.position * displacement.dot(particle.position);
+            let angle = tangent_disp.length();
+            if angle > 0.0 {
+                let axis = particle.position.cross(tangent_disp).normalize();
+                let rot = Quat::from_axis_angle(axis, angle);
+                particle.position = rot * particle.position;
+            }
             particle.velocity = particle.velocity
                 + (particle.acceleration + new_particle_accelerations[i]) / 2.
                     * tectonics_config.timestep;
@@ -336,10 +343,6 @@ fn simulate(
                 plate.drift_direction.y * tectonics_config.plate_rotation_drift_rate,
                 0.,
             ) * plate.axis_of_rotation;
-            // plate.axis_of_rotation = (plate.axis_of_rotation
-            //     + plate.drift_direction * tectonics_config.plate_rotation_drift_rate / 2.
-            //         * tectonics_config.timestep)
-            //     .normalize();
         }
         tectonics_iteration.0 += 1;
     } else {
