@@ -18,6 +18,7 @@ pub struct PlateParticle {
 }
 
 impl GetNormal for PlateParticle {
+    #[inline]
     fn normal(&self) -> Vec3 {
         self.position
     }

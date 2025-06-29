@@ -1,6 +1,6 @@
 mod tectonics;
 pub use tectonics::*;
-mod particle;
+pub mod particle;
 mod particle_sphere;
 mod plate;
 mod vertex_interpolation;

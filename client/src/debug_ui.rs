@@ -5,7 +5,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 
 use crate::states::SimulationState;
-use crate::tectonics::{ParticleSphere, PlateParticles, TectonicsIteration};
+use crate::tectonics::{PlateParticles, TectonicsIteration};
 
 #[derive(Copy, Clone)]
 pub struct DebugUIPlugin {

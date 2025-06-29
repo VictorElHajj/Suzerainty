@@ -1,5 +1,6 @@
 use crate::hex_sphere::{Tile, vec_utils};
-use crate::{MainCamera, debug_ui::DebugDiagnostics, states::SimulationState};
+use crate::utils::MainCamera;
+use crate::{debug_ui::DebugDiagnostics, states::SimulationState};
 use bevy::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,

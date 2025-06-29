@@ -1,11 +1,5 @@
 #![feature(slice_as_array)]
 
-mod debug_ui;
-mod hex_sphere;
-mod sphere_bins;
-mod states;
-mod tectonics;
-
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
     pbr::wireframe::{WireframeConfig, WireframePlugin},
@@ -13,14 +7,14 @@ use bevy::{
     render::camera::ScalingMode,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use rand::SeedableRng;
-
-use crate::{
+use client::{
     debug_ui::{DebugDiagnostics, DebugUIPlugin},
     hex_sphere::{HexSphereConfig, HexSpherePlugin},
     states::SimulationState,
-    tectonics::{ParticleSphere, ParticleSphereConfig, TectonicsConfiguration, TectonicsPlugin},
+    tectonics::{ParticleSphereConfig, TectonicsConfiguration, TectonicsPlugin},
+    utils::{GlobalRng, MainCamera},
 };
+use rand::SeedableRng;
 
 fn main() {
     let seed = rand::random::<u64>();
@@ -73,12 +67,6 @@ fn main() {
         .init_state::<SimulationState>()
         .run();
 }
-
-#[derive(Resource)]
-struct GlobalRng(rand::rngs::StdRng);
-
-#[derive(Component)]
-struct MainCamera;
 
 fn setup(mut commands: Commands) {
     commands.spawn((

@@ -37,3 +37,5 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 
 ### Current order
 Try to create and remove particles instead of using forces. Create if none are within a tile, and remove if overlapping.
+
+Split into lib and binary. Tectonics logic should be detached from system/plugin, same with sphere_bin. They are then used in files that do have systems and bevy plugins.
