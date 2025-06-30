@@ -87,7 +87,7 @@ impl Tectonics {
         added_tiles.insert(starting_tile);
 
         while added_tiles.len() < particle_sphere.tiles.len() {
-            let plate_color = LinearRgba::new(rng.random(), rng.random(), rng.random(), 0.1).into();
+            let plate_color = LinearRgba::new(rng.random(), rng.random(), rng.random(), 1.).into();
             let plate_type =
                 if (added_tiles.len() as f32 / tile_count as f32) < config.continental_rate {
                     PlateType::Continental

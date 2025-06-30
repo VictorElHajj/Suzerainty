@@ -13,9 +13,6 @@ pub fn interpolate_vertices(
     mesh_handle: Res<HexSphereMeshHandle>,
 ) {
     if tectonics_iteration.0 % 10 == 0 {
-        let num_vertices = hex_sphere.vertices.len();
-        let mut new_colors = vec![[0.0; 4]; num_vertices];
-
         // 1. For each tile, compute average height from nearby particles, update tile height and center vertex height
         let tile_results: Vec<_> = hex_sphere
             .tiles
@@ -53,10 +50,10 @@ pub fn interpolate_vertices(
         // Apply results sequentially to avoid race conditions
         for (tile_index, new_height, color, tile_center, tile_normal) in tile_results {
             hex_sphere.tiles[tile_index].height = new_height;
-            new_colors[tile_center] = color;
+            hex_sphere.colors[tile_center] = color;
             hex_sphere.vertices[tile_center] = (tile_normal * new_height).into();
-            for vertex_index in hex_sphere.tiles[tile_index].vertices.iter() {
-                new_colors[*vertex_index] = color;
+            for vertex_index in &hex_sphere.tiles[tile_index].vertices.clone() {
+                hex_sphere.colors[*vertex_index] = color;
             }
         }
 
@@ -85,9 +82,9 @@ pub fn interpolate_vertices(
         // 3. Update mesh
         if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
             if hex_sphere.vertices.len() == mesh.count_vertices()
-                && new_colors.len() == mesh.count_vertices()
+                && hex_sphere.colors.len() == mesh.count_vertices()
             {
-                mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, new_colors);
+                mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, hex_sphere.colors.clone());
                 mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, hex_sphere.vertices.clone());
                 mesh.compute_normals();
             } else {

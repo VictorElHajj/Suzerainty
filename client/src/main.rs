@@ -35,7 +35,6 @@ fn main() {
                     }),
                     ..Default::default()
                 }),
-            WireframePlugin::default(),
             PanOrbitCameraPlugin,
             FrameTimeDiagnosticsPlugin {
                 max_history_length: 60,
@@ -69,7 +68,6 @@ fn main() {
             },
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, toggle_wireframe)
         .insert_resource(ClearColor(LinearRgba::BLACK.into()))
         .insert_resource(GlobalRng(rand::rngs::StdRng::seed_from_u64(seed)))
         .init_state::<SimulationState>()
@@ -112,13 +110,4 @@ fn setup(mut commands: Commands) {
             ..Default::default()
         },
     ));
-}
-
-fn toggle_wireframe(
-    mut wireframe_config: ResMut<WireframeConfig>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-) {
-    if keyboard.just_pressed(KeyCode::Space) {
-        wireframe_config.global = !wireframe_config.global;
-    }
 }

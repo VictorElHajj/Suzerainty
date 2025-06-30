@@ -97,8 +97,7 @@ fn simulate_system(
 
 fn draw_bins(
     mut gizmos: Gizmos,
-    // bins: Res<PlateParticles>,
-    tectonics_config: Res<TectonicsPluginConfig>,
+    tectonics: Res<Tectonics>,
     current_mouse_pick: Res<CurrentMousePick>,
 ) {
     if let Some(MousePickInfo { tile, normal }) = &current_mouse_pick.0 {
@@ -107,20 +106,20 @@ fn draw_bins(
                 rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
                 translation: (normal * tile.height).into(),
             },
-            tectonics_config.tectonics_config.particle_force_radius,
+            tectonics.config.particle_force_radius,
             LinearRgba::BLUE,
         );
-        // for particle in bins
-        //     .0
-        //     .get_within(*normal, tectonics_config.particle_force_radius)
-        // {
-        //     let geodesic_distance = f32::acos(normal.dot(particle.position));
-        //     let distance_fraction = geodesic_distance / tectonics_config.particle_force_radius;
-        //     gizmos.arrow(
-        //         particle.position,
-        //         particle.position * (1.1 - distance_fraction / 10.),
-        //         LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
-        //     );
-        // }
+        for particle in tectonics
+            .particles
+            .get_within(*normal, tectonics.config.particle_force_radius)
+        {
+            let geodesic_distance = f32::acos(normal.dot(particle.position));
+            let distance_fraction = geodesic_distance / tectonics.config.particle_force_radius;
+            gizmos.arrow(
+                particle.position,
+                particle.position * (1.1 - distance_fraction / 10.),
+                LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
+            );
+        }
     }
 }

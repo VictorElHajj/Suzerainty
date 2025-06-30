@@ -45,8 +45,10 @@ impl Tile {
 pub struct HexSphere {
     /// The [subsphere::HexSphere<Fuller>] [HexSphere] wraps around
     pub subsphere: subsphere::HexSphere<Fuller>,
-    /// The modified vertices with interpolated heights
+    /// Mesh vertices
     pub vertices: Vec<[f32; 3]>,
+    /// Mesh vertex colors
+    pub colors: Vec<[f32; 4]>,
     /// Essentially a wrapper around [subsphere::hex::Face<Fuller>], modified with a central vertex and height
     pub tiles: Vec<Tile>,
     /// For each vertex, the indices of the tiles it is adjacent to
@@ -187,6 +189,7 @@ fn setup(
         subsphere: hex_sphere,
         tiles,
         vertices: vertices.clone(),
+        colors: colors.clone(),
         vertices_to_tiles,
     });
 
