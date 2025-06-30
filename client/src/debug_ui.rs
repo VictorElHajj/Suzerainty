@@ -3,9 +3,10 @@ use std::time::Duration;
 use bevy::color::palettes;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
+use suz_sim::tectonics::Tectonics;
 
 use crate::states::SimulationState;
-use crate::tectonics::{PlateParticles, TectonicsIteration};
+use crate::tectonics::TectonicsIteration;
 
 #[derive(Copy, Clone)]
 pub struct DebugUIPlugin {
@@ -145,15 +146,15 @@ fn add_mesh_gen_stats(
 }
 
 fn update_tectonics(
-    particles: Res<PlateParticles>,
+    tectonics: Res<Tectonics>,
     tectonics_iteration: Res<TectonicsIteration>,
     mut texts: ParamSet<(
         Query<&mut Text, With<TectonicsParticleText>>,
         Query<&mut Text, With<TectonicsIterationText>>,
     )>,
 ) {
-    **texts.p0().single_mut().unwrap() = particles
-        .0
+    **texts.p0().single_mut().unwrap() = tectonics
+        .particles
         .count()
         .to_string()
         // Thousands seperator

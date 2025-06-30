@@ -1,5 +1,11 @@
 #![feature(slice_as_array)]
 
+use crate::{
+    debug_ui::{DebugDiagnostics, DebugUIPlugin},
+    hex_sphere::{HexSphereConfig, HexSpherePlugin},
+    states::SimulationState,
+    tectonics::{TectonicsPlugin, TectonicsPluginConfig},
+};
 use bevy::{
     diagnostic::FrameTimeDiagnosticsPlugin,
     pbr::wireframe::{WireframeConfig, WireframePlugin},
@@ -7,14 +13,14 @@ use bevy::{
     render::camera::ScalingMode,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use client::{
-    debug_ui::{DebugDiagnostics, DebugUIPlugin},
-    hex_sphere::{HexSphereConfig, HexSpherePlugin},
-    states::SimulationState,
-    tectonics::{ParticleSphereConfig, TectonicsConfiguration, TectonicsPlugin},
-    utils::{GlobalRng, MainCamera},
-};
 use rand::SeedableRng;
+use suz_sim::{particle_sphere::ParticleSphereConfig, tectonics::TectonicsConfiguration};
+
+mod debug_ui;
+mod hex_sphere;
+mod states;
+mod tectonics;
+mod vertex_interpolation;
 
 fn main() {
     let seed = rand::random::<u64>();
@@ -42,22 +48,24 @@ fn main() {
                 config: HexSphereConfig { subdivisions: 128 },
             },
             TectonicsPlugin {
-                tectonics_config: TectonicsConfiguration {
-                    major_plate_fraction: 0.5,
-                    major_tile_fraction: 0.75,
-                    plate_goal: 10,
-                    continental_rate: 0.4,
-                    min_plate_size: 15,
-                    particle_force_radius: 0.20,
-                    repulsive_force_modifier: 0.01,
-                    attractive_force: 0.002,
-                    plate_force_modifier: 0.02,
-                    plate_rotation_drift_rate: 0.001,
-                    timestep: 0.3,
-                    iterations: 500,
-                    friction_coefficient: 0.5,
+                config: TectonicsPluginConfig {
+                    tectonics_config: TectonicsConfiguration {
+                        major_plate_fraction: 0.5,
+                        major_tile_fraction: 0.75,
+                        plate_goal: 10,
+                        continental_rate: 0.4,
+                        min_plate_size: 15,
+                        particle_force_radius: 0.20,
+                        repulsive_force_modifier: 0.01,
+                        attractive_force: 0.002,
+                        plate_force_modifier: 0.02,
+                        plate_rotation_drift_rate: 0.001,
+                        timestep: 0.3,
+                        iterations: 500,
+                        friction_coefficient: 0.5,
+                    },
+                    particle_config: ParticleSphereConfig { subdivisions: 32 },
                 },
-                particle_config: ParticleSphereConfig { subdivisions: 32 },
             },
         ))
         .add_systems(Startup, setup)
@@ -67,6 +75,12 @@ fn main() {
         .init_state::<SimulationState>()
         .run();
 }
+
+#[derive(Resource)]
+pub struct GlobalRng(pub rand::rngs::StdRng);
+
+#[derive(Component)]
+pub struct MainCamera;
 
 fn setup(mut commands: Commands) {
     commands.spawn((

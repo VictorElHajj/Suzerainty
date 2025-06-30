@@ -1,15 +1,14 @@
 use crate::hex_sphere::{HexSphere, HexSphereMeshHandle};
-use crate::sphere_bins::GetNormal;
 use crate::tectonics::TectonicsIteration;
-use crate::tectonics::tectonics::PlateParticles;
 use bevy::prelude::*;
 use rayon::prelude::*;
+use suz_sim::sphere_bins::GetNormal;
+use suz_sim::tectonics::Tectonics;
 
 pub fn interpolate_vertices(
     mut meshes: ResMut<Assets<Mesh>>,
     mut hex_sphere: ResMut<HexSphere>,
-    plate_particles: Res<PlateParticles>,
-    tectonics_config: Res<crate::tectonics::TectonicsConfiguration>,
+    tectonics: Res<Tectonics>,
     tectonics_iteration: Res<TectonicsIteration>,
     mesh_handle: Res<HexSphereMeshHandle>,
 ) {
@@ -28,9 +27,9 @@ pub fn interpolate_vertices(
                 let tile_normal = tile.normal;
                 let tile_height = tile.height;
                 let tile_center = tile.center;
-                for particle in plate_particles
-                    .0
-                    .get_within(tile_normal, tectonics_config.particle_force_radius)
+                for particle in tectonics
+                    .particles
+                    .get_within(tile_normal, tectonics.config.particle_force_radius)
                 {
                     let dist = 1.0 - tile_normal.dot(particle.normal()); // geodesic cosine distance
                     let weight = 1.0 / (dist + 0.01); // closer = higher weight, avoid div by zero

@@ -1,19 +1,13 @@
-use client::{
-    sphere_bins::SphereBins,
-    tectonics::{
-        ParticleSphere, ParticleSphereConfig, TectonicsConfiguration, particle::PlateParticle,
-        setup, simulate,
-    },
-};
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand::SeedableRng;
+use suz_sim::{
+    particle_sphere::{ParticleSphere, ParticleSphereConfig},
+    tectonics::{Tectonics, TectonicsConfiguration},
+};
 
-const BIN_COUNT: usize = 60;
 const ITERATIONS: usize = 100;
 
 fn tectonics_benchmark(c: &mut Criterion) {
-    let mut particle_bins = SphereBins::<BIN_COUNT, PlateParticle>::new();
-    let mut plates = Vec::new();
     let tectonics_config = TectonicsConfiguration {
         major_plate_fraction: 0.5,
         major_tile_fraction: 0.75,
@@ -31,17 +25,11 @@ fn tectonics_benchmark(c: &mut Criterion) {
     };
     let mut rng = rand::rngs::StdRng::seed_from_u64(0);
     let particle_sphere = ParticleSphere::from_config(ParticleSphereConfig { subdivisions: 32 });
-    setup(
-        &tectonics_config,
-        &particle_sphere,
-        &mut particle_bins,
-        &mut plates,
-        &mut rng,
-    );
-    c.bench_function("Tectonics paricle simulation", |b| {
+    let mut tectonics = Tectonics::from_config(tectonics_config, &particle_sphere, &mut rng);
+    c.bench_function("Tectonics particle simulation", |b| {
         b.iter(|| {
             for _ in 0..ITERATIONS {
-                simulate(&mut particle_bins, &mut plates, &tectonics_config, &mut rng)
+                tectonics.simulate(&mut rng);
             }
         });
     });
