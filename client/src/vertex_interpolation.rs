@@ -62,6 +62,7 @@ pub fn interpolate_vertices(
             .into_par_iter()
             .map(|vertex_index| {
                 let tile_indices = &hex_sphere.vertices_to_tiles[vertex_index];
+                // Center vertex has no adjacent tiles, so we skip it
                 if tile_indices.is_empty() {
                     return hex_sphere.vertices[vertex_index];
                 }
