@@ -7,10 +7,7 @@ use suz_sim::{
 use bevy::prelude::*;
 
 use crate::{
-    GlobalRng,
-    debug_ui::DebugDiagnostics,
-    hex_sphere::{CurrentMousePick, MousePickInfo},
-    states::SimulationState,
+    GlobalRng, debug_ui::DebugDiagnostics, states::SimulationState,
     vertex_interpolation::interpolate_vertices,
 };
 
@@ -31,13 +28,12 @@ impl Plugin for TectonicsPlugin {
         app.insert_resource(self.config)
             .insert_resource(TectonicsIteration(0))
             .add_systems(OnEnter(SimulationState::Tectonics), setup)
+            .add_systems(OnExit(SimulationState::Tectonics), interpolate_vertices)
             .add_systems(
                 Update,
                 (
                     draw_particles,
-                    draw_bins,
                     simulate_system.run_if(in_state(SimulationState::Tectonics)),
-                    interpolate_vertices.run_if(in_state(SimulationState::Tectonics)),
                 ),
             );
     }
@@ -69,11 +65,11 @@ fn draw_particles(
     for particle in tectonics.particles.iter() {
         gizmos.cross(
             Isometry3d {
-                translation: (particle.position * particle.height).into(),
+                translation: (particle.position * particle.height * 1.05).into(),
                 rotation: Quat::from_rotation_arc(Vec3::Z, particle.position),
             },
             16. * PI / particle_sphere.tiles.len() as f32,
-            tectonics.plates[particle.plate_index].color,
+            tectonics.plates[particle.plate_index].color.with_alpha(0.3),
         );
     }
 }
@@ -85,41 +81,13 @@ fn simulate_system(
     mut tectonics_iteration: ResMut<TectonicsIteration>,
     mut debug_diagnostics: ResMut<DebugDiagnostics>,
     mut next_state: ResMut<NextState<SimulationState>>,
+    mut gizmos: Gizmos,
 ) {
     if tectonics_iteration.0 < tectonics.config.iterations {
-        tectonics.simulate(&mut rng.0);
+        tectonics.simulate(&mut rng.0, &mut gizmos);
         tectonics_iteration.0 += 1;
     } else {
         debug_diagnostics.tectonics_time = Some(tectonics_start_time.0.elapsed());
         next_state.set(SimulationState::Erosion);
-    }
-}
-
-fn draw_bins(
-    mut gizmos: Gizmos,
-    tectonics: Res<Tectonics>,
-    current_mouse_pick: Res<CurrentMousePick>,
-) {
-    if let Some(MousePickInfo { tile, normal }) = &current_mouse_pick.0 {
-        gizmos.circle(
-            Isometry3d {
-                rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
-                translation: (normal * tile.height).into(),
-            },
-            tectonics.config.particle_force_radius,
-            LinearRgba::BLUE,
-        );
-        for particle in tectonics
-            .particles
-            .get_within(*normal, tectonics.config.particle_force_radius)
-        {
-            let geodesic_distance = f32::acos(normal.dot(particle.position));
-            let distance_fraction = geodesic_distance / tectonics.config.particle_force_radius;
-            gizmos.arrow(
-                particle.position,
-                particle.position * (1.1 - distance_fraction / 10.),
-                LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
-            );
-        }
     }
 }

@@ -6,12 +6,7 @@ use crate::{
     states::SimulationState,
     tectonics::{TectonicsPlugin, TectonicsPluginConfig},
 };
-use bevy::{
-    diagnostic::FrameTimeDiagnosticsPlugin,
-    pbr::wireframe::{WireframeConfig, WireframePlugin},
-    prelude::*,
-    render::camera::ScalingMode,
-};
+use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*, render::camera::ScalingMode};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use rand::SeedableRng;
 use suz_sim::{particle_sphere::ParticleSphereConfig, tectonics::TectonicsConfiguration};
@@ -49,17 +44,17 @@ fn main() {
             TectonicsPlugin {
                 config: TectonicsPluginConfig {
                     tectonics_config: TectonicsConfiguration {
-                        major_plate_fraction: 0.5,
-                        major_tile_fraction: 0.75,
-                        plate_goal: 10,
-                        continental_rate: 0.4,
+                        major_plate_fraction: 0.3,
+                        major_tile_fraction: 0.4,
+                        plate_goal: 30,
+                        continental_rate: 0.3,
                         min_plate_size: 15,
                         particle_force_radius: 0.20,
-                        repulsive_force_modifier: 0.01,
-                        attractive_force: 0.002,
-                        plate_force_modifier: 0.02,
-                        plate_rotation_drift_rate: 0.001,
-                        timestep: 0.3,
+                        repulsive_force_modifier: 0.04,
+                        link_spring_constant: 10.,
+                        plate_force_modifier: 0.01,
+                        plate_rotation_drift_rate: 0.01,
+                        timestep: 0.1,
                         iterations: 500,
                         friction_coefficient: 0.5,
                     },

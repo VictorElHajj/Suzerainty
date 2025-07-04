@@ -3,11 +3,12 @@ use std::f32::consts::PI;
 use bevy::math::Vec3;
 use rayon::prelude::*;
 
-pub trait GetNormal {
+pub trait Binnable: Sized + Send + Sync {
     fn normal(&self) -> Vec3;
+    fn id(&self) -> usize;
 }
 
-pub struct Bin<T: Sized + GetNormal + Send> {
+pub struct Bin<T: Binnable> {
     pub normal: Vec3,
     /// Aproximation of how large is bucket is on the sphere
     pub max_geodesic_distance: f32,
@@ -15,12 +16,12 @@ pub struct Bin<T: Sized + GetNormal + Send> {
 }
 
 /// Creates BINS bins equally across a sphere. Items are inserted with a unit sphere normal and put in the closest bucket.
-pub struct SphereBins<const BINS: usize, T: Sized + GetNormal + Send + Sync> {
+pub struct SphereBins<const BINS: usize, T: Binnable> {
     pub(crate) bins: [Bin<T>; BINS],
     count: usize,
 }
 
-impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> {
+impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
     pub fn new() -> Self {
         let golden_angle = PI * (3. - f32::sqrt(5.));
         let offset: f32 = 2. / BINS as f32;
@@ -99,19 +100,13 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
     pub fn get_closest(&self, normal: Vec3) -> &T {
         self.bins
             .iter()
-            .filter(|bin| bin.items.len() > 0)
-            .max_by(|a, b| {
-                normal
-                    .dot(a.normal)
-                    .partial_cmp(&normal.dot(b.normal))
-                    .expect(&format!(
-                        "Failed to compare {:?} with {:?}",
-                        a.normal, b.normal
-                    ))
+            .filter(move |bin| {
+                // Get sphere distance between input normal and bin normal
+                let geodesic_distance = f32::acos(normal.dot(bin.normal));
+                // if sphere distance is less than bin size + radius
+                geodesic_distance < bin.max_geodesic_distance * 2.
             })
-            .expect("Sphere Bin had no bins.")
-            .items
-            .iter()
+            .flat_map(|bin| bin.items.iter())
             .max_by(|a, b| {
                 normal
                     .dot(a.normal())
@@ -123,37 +118,6 @@ impl<const BINS: usize, T: Sized + GetNormal + Send + Sync> SphereBins<BINS, T> 
                     ))
             })
             .unwrap()
-    }
-
-    /// Returns item with normal closest to input normal, not icluding input normal
-    pub fn get_closest_other(&self, normal: Vec3) -> &T {
-        self.bins
-            .iter()
-            .filter(|bin| bin.items.len() > 0)
-            .max_by(|a, b| {
-                normal
-                    .dot(a.normal)
-                    .partial_cmp(&normal.dot(b.normal))
-                    .expect(&format!(
-                        "Failed to compare {:?} with {:?}",
-                        a.normal, b.normal
-                    ))
-            })
-            .expect("Sphere Bin had no bins.")
-            .items
-            .iter()
-            .filter(|particle| particle.normal() != normal)
-            .max_by(|a, b| {
-                normal
-                    .dot(a.normal())
-                    .partial_cmp(&normal.dot(b.normal()))
-                    .expect(&format!(
-                        "Failed to compare {:?} with {:?}",
-                        a.normal(),
-                        b.normal()
-                    ))
-            })
-            .expect("Bin was empty, or all bins were empty?? Should not happen")
     }
 
     /// Checks all items, if any item is further away from the normal than the maximum expected bucket size, remove and re-add.

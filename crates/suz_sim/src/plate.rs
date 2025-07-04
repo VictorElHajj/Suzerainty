@@ -1,4 +1,4 @@
-use crate::sphere_bins::GetNormal;
+use crate::sphere_bins::Binnable;
 use bevy::prelude::*;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -29,9 +29,14 @@ pub struct PlateParticle {
     pub id: usize,
 }
 
-impl GetNormal for PlateParticle {
+impl Binnable for PlateParticle {
     #[inline]
     fn normal(&self) -> Vec3 {
         self.position
+    }
+
+    #[inline]
+    fn id(&self) -> usize {
+        self.id
     }
 }

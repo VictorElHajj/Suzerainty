@@ -2,8 +2,8 @@ use crate::hex_sphere::{HexSphere, HexSphereMeshHandle};
 use crate::tectonics::TectonicsIteration;
 use bevy::prelude::*;
 use rayon::prelude::*;
-use suz_sim::sphere_bins::GetNormal;
-use suz_sim::tectonics::Tectonics;
+use suz_sim::sphere_bins::Binnable;
+use suz_sim::tectonics::{OCEANIC_PARTICLE_HEIGHT, Tectonics};
 
 pub fn interpolate_vertices(
     mut meshes: ResMut<Assets<Mesh>>,
@@ -22,7 +22,6 @@ pub fn interpolate_vertices(
                 let mut weighted_sum = 0.0;
                 let mut weight_total = 0.0;
                 let tile_normal = tile.normal;
-                let tile_height = tile.height;
                 let tile_center = tile.center;
                 for particle in tectonics
                     .particles
@@ -36,7 +35,7 @@ pub fn interpolate_vertices(
                 let new_height = if weight_total > 0.0 {
                     weighted_sum / weight_total
                 } else {
-                    tile_height
+                    OCEANIC_PARTICLE_HEIGHT
                 };
                 let color = if new_height < 1.0 {
                     [0.0, 0.0, 1.0, 1.0] // blue for below 1.0

@@ -1,8 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use bevy::{
     color::LinearRgba,
     ecs::resource::Resource,
+    gizmos::gizmos::Gizmos,
     math::{EulerRot, Quat, Vec2, Vec3},
 };
 use rand::Rng;
@@ -11,13 +12,13 @@ use rayon::iter::ParallelIterator;
 use crate::{
     particle_sphere::ParticleSphere,
     plate::{Plate, PlateParticle, PlateType},
-    sphere_bins::{GetNormal, SphereBins},
+    sphere_bins::{Binnable, SphereBins},
 };
 
-const OCEANIC_PARTICLE_MASS: f32 = 1.;
-const OCEANIC_PARTICLE_HEIGHT: f32 = 0.98;
-const CONTINENTAL_PARTICLE_MASS: f32 = 5.;
-const CONTINENTAL_PARTICLE_HEIGHT: f32 = 1.02;
+pub const OCEANIC_PARTICLE_MASS: f32 = 1.;
+pub const OCEANIC_PARTICLE_HEIGHT: f32 = 0.98;
+pub const CONTINENTAL_PARTICLE_MASS: f32 = 5.;
+pub const CONTINENTAL_PARTICLE_HEIGHT: f32 = 1.02;
 
 pub const BIN_COUNT: usize = 60;
 
@@ -37,8 +38,8 @@ pub struct TectonicsConfiguration {
     pub particle_force_radius: f32,
     /// Modifier to the plate particle repulsive force, is 4x to particles of other plates
     pub repulsive_force_modifier: f32,
-    /// Modifier to the plate particle attractive force, only works on particles of same plate
-    pub attractive_force: f32,
+    /// Spring constant used for particle links
+    pub link_spring_constant: f32,
     /// Modifier to the force applies by the plate rotational axis to plate particles.
     pub plate_force_modifier: f32,
     /// The rate at which the plate axis of rotation drifts in position
@@ -53,6 +54,10 @@ pub struct TectonicsConfiguration {
 pub struct Tectonics {
     pub config: TectonicsConfiguration,
     pub particles: SphereBins<BIN_COUNT, PlateParticle>,
+    /// Particle links
+    pub links: HashMap<usize, Vec<usize>>,
+    /// Average distance if all particles were spaced out evenly
+    pub ideal_distance: f32,
     pub plates: Vec<Plate>,
 }
 
@@ -68,6 +73,8 @@ impl Tectonics {
 
         let mut particles = SphereBins::<BIN_COUNT, PlateParticle>::new();
         let mut plates = Vec::new();
+        let mut links = HashMap::<usize, Vec<usize>>::new();
+        let ideal_distance = f32::acos(1. - 2. / particle_sphere.tiles.len() as f32) * 2.;
 
         let mut generated_majors = 0;
         let mut generated_minors = 0;
@@ -135,6 +142,9 @@ impl Tectonics {
                 let chosen_tile = &particle_sphere.tiles
                     [next_surrounding_unvisited_tiles.swap_remove(random_adjacent_tile_index)];
 
+                // Add tile adjacents to particle links (remember, particles will have the id of the tile that spawned them)
+                links.insert(chosen_tile.index, chosen_tile.adjacent.clone());
+
                 // Create particle from chosen tile
                 temp_particle_vec.push(PlateParticle {
                     position: chosen_tile.normal,
@@ -161,6 +171,8 @@ impl Tectonics {
                         .iter()
                         .filter(|index| !added_tiles.contains(*index)),
                 );
+                next_surrounding_unvisited_tiles.sort_unstable();
+                next_surrounding_unvisited_tiles.dedup();
             }
 
             if temp_particle_vec.len() >= config.min_plate_size {
@@ -208,14 +220,16 @@ impl Tectonics {
         }
         Tectonics {
             config,
+            links,
             particles,
             plates,
+            ideal_distance,
         }
     }
 
     // Each particle will be forced to have the velocity matching rotation around the ownings plate axis of rotation
     // Then we adjust that velocity depending on other particles
-    pub fn simulate(&mut self, rng: &mut rand::rngs::StdRng) {
+    pub fn simulate(&mut self, rng: &mut rand::rngs::StdRng, gizmos: &mut Gizmos) {
         // 1. Calculate acceleration for each particle
         let new_particle_accelerations: Vec<Vec3> = self
             .particles
@@ -241,23 +255,23 @@ impl Tectonics {
                     if particle.id == other_particle.id {
                         continue;
                     }
+
                     let geodesic_distance =
                         f32::acos(particle.position.dot(other_particle.position));
-                    let repulsive_force = if particle.plate_index == other_particle.plate_index {
-                        1. / (geodesic_distance / self.config.repulsive_force_modifier).powi(2)
+                    let force = if particle.plate_index == other_particle.plate_index {
+                        // Interact via links
+                        if self.links[&particle.id].contains(&other_particle.id) {
+                            let displacement = self.ideal_distance - geodesic_distance;
+                            self.config.link_spring_constant * displacement
+                        } else {
+                            0.
+                        }
                     } else {
-                        1. / (geodesic_distance / self.config.repulsive_force_modifier).powi(2) * 2.
+                        // Interact via repulsion
+                        (1.0 - geodesic_distance / self.config.particle_force_radius)
+                            * self.config.repulsive_force_modifier
                     };
-                    let attraction_force = if particle.plate_index == other_particle.plate_index {
-                        self.config.attractive_force
-                    } else {
-                        0.
-                    };
-                    interaction_force += (repulsive_force - attraction_force)
-                        * (particle.position - other_particle.position);
-                    if particle.plate_index != other_particle.plate_index {
-                        // TODO this is where we do plate interactions
-                    }
+                    interaction_force += force * (particle.position - other_particle.position);
                 }
                 (plate_force + interaction_force + friction_force) / particle.mass
             })
@@ -265,6 +279,12 @@ impl Tectonics {
         // 2. Apply forces and update velocity and position
         // We used a Velocity Verlet integration
         for (i, particle) in self.particles.iter_mut().enumerate() {
+            gizmos.arrow(
+                particle.position,
+                particle.position + new_particle_accelerations[i] * 10.,
+                LinearRgba::WHITE,
+            );
+
             let displacement = particle.velocity * self.config.timestep
                 + 0.5 * particle.acceleration * self.config.timestep.powi(2);
             // Project displacement onto tangent plane of current position

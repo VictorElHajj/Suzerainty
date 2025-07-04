@@ -10,6 +10,7 @@ use bevy::{color::Color, gizmos::gizmos::Gizmos, math::Vec3};
 use std::{num::NonZero, time::Instant};
 use subsphere::Vertex;
 use subsphere::{Face, Sphere, proj::Fuller};
+use suz_sim::tectonics::Tectonics;
 use suz_sim::vec_utils;
 
 /// A helper for the modified faces with a central vertex
@@ -236,7 +237,6 @@ fn mouse_pick(
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Projection, &Transform), With<MainCamera>>,
     hex_sphere: Res<HexSphere>,
-    mut gizmos: Gizmos,
     mut current_mouse_pick: ResMut<CurrentMousePick>,
 ) {
     let window = window_query.single().unwrap();
@@ -277,21 +277,6 @@ fn mouse_pick(
                     normal: point_world,
                     tile: tile.clone(),
                 });
-
-                // Draw the selected tile
-                tile.draw_border(&hex_sphere.vertices, LinearRgba::WHITE.into(), &mut gizmos);
-                // Draw connected tiles
-                // for adjacent_tile in tile
-                //     .adjacent
-                //     .iter()
-                //     .map(|adjacent_index| &hex_sphere.tiles[*adjacent_index])
-                // {
-                //     adjacent_tile.draw_border(
-                //         &hex_sphere.vertices,
-                //         LinearRgba::GREEN.into(),
-                //         &mut gizmos,
-                //     );
-                // }
             } else {
                 current_mouse_pick.0 = None;
             }
@@ -302,9 +287,38 @@ fn mouse_pick(
 fn draw_selected(
     mut gizmos: Gizmos,
     hex_sphere: Res<HexSphere>,
+    tectonics: Res<Tectonics>,
     current_mouse_pick: Res<CurrentMousePick>,
 ) {
-    if let Some(MousePickInfo { tile, .. }) = &current_mouse_pick.0 {
+    if let Some(MousePickInfo { tile, normal }) = &current_mouse_pick.0 {
         tile.draw_border(&hex_sphere.vertices, LinearRgba::WHITE.into(), &mut gizmos);
+        gizmos.circle(
+            Isometry3d {
+                rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
+                translation: (normal * tile.height).into(),
+            },
+            tectonics.config.particle_force_radius,
+            LinearRgba::BLUE,
+        );
+        gizmos.circle(
+            Isometry3d {
+                rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
+                translation: (normal * tile.height).into(),
+            },
+            tectonics.ideal_distance,
+            LinearRgba::GREEN,
+        );
+        for particle in tectonics
+            .particles
+            .get_within(*normal, tectonics.config.particle_force_radius)
+        {
+            let geodesic_distance = f32::acos(normal.dot(particle.position));
+            let distance_fraction = geodesic_distance / tectonics.config.particle_force_radius;
+            gizmos.arrow(
+                particle.position,
+                particle.position * (1.1 - distance_fraction / 10.),
+                LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
+            );
+        }
     }
 }
