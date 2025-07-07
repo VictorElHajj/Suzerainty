@@ -8,17 +8,19 @@ pub trait Binnable: Sized + Send + Sync {
     fn id(&self) -> usize;
 }
 
-pub struct Bin<T: Binnable> {
+pub struct Bin {
     pub normal: Vec3,
     /// Aproximation of how large is bucket is on the sphere
     pub max_geodesic_distance: f32,
-    pub items: Vec<T>,
+    /// Indices to SphereBins items
+    pub indices: Vec<usize>,
 }
 
 /// Creates BINS bins equally across a sphere. Items are inserted with a unit sphere normal and put in the closest bucket.
 pub struct SphereBins<const BINS: usize, T: Binnable> {
-    pub(crate) bins: [Bin<T>; BINS],
-    count: usize,
+    pub(crate) bins: [Bin; BINS],
+    /// A list of T's with unique ids, sorted by id
+    pub items: Vec<T>,
 }
 
 impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
@@ -32,13 +34,16 @@ impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
             let phi = i as f32 * golden_angle;
             let x = f32::cos(phi) * r;
             let z = f32::sin(phi) * r;
-            Bin::<T> {
+            Bin {
                 normal: Vec3::new(x, y, z),
-                items: Vec::new(),
+                indices: Vec::new(),
                 max_geodesic_distance: f32::acos(1. - 2. / BINS as f32),
             }
         });
-        return SphereBins { bins, count: 0 };
+        return SphereBins {
+            bins,
+            items: Vec::new(),
+        };
     }
 
     /// item is put in bin with closest normal
@@ -53,8 +58,8 @@ impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
                     .unwrap()
             })
             .unwrap();
-        self.count += 1;
-        closest_bin.items.push(item);
+        self.items.push(item);
+        closest_bin.indices.push(self.items.len() - 1);
     }
 
     /// Returns an iterator with references for all items within the radius, across one or multiple bins
@@ -67,33 +72,36 @@ impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
                 // if sphere distance is less than bin size + radius
                 geodesic_distance < bin.max_geodesic_distance + radius
             })
-            .flat_map(|bin| bin.items.iter())
-            .filter(move |item| {
+            .flat_map(|bin| bin.indices.iter())
+            .filter_map(move |index| {
+                let item = &self.items[*index];
                 let geodesic_distance = f32::acos(normal.dot(item.normal()));
-                geodesic_distance <= radius
+                if geodesic_distance <= radius {
+                    Some(item)
+                } else {
+                    None
+                }
             })
     }
 
     /// Returns a iterator over all items
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.bins.iter().flat_map(|bin| bin.items.iter())
+        self.items.iter()
     }
 
     /// Returns a rayon parallel iterator over all items
     pub fn par_iter(&self) -> impl ParallelIterator<Item = &T> {
-        self.bins.par_iter().flat_map(|bin| bin.items.par_iter())
+        self.items.par_iter()
     }
 
     /// Returns a rayon parallel mutable iterator over all items
     pub fn par_iter_mut(&mut self) -> impl ParallelIterator<Item = &mut T> {
-        self.bins
-            .par_iter_mut()
-            .flat_map(|bin| bin.items.par_iter_mut())
+        self.items.par_iter_mut()
     }
 
     /// Returns mutable iterator over all items
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.bins.iter_mut().flat_map(|bin| bin.items.iter_mut())
+        self.items.iter_mut()
     }
 
     /// Returns item with normal closest to input normal
@@ -106,7 +114,7 @@ impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
                 // if sphere distance is less than bin size + radius
                 geodesic_distance < bin.max_geodesic_distance * 2.
             })
-            .flat_map(|bin| bin.items.iter())
+            .flat_map(|bin| bin.indices.iter().map(|index| &self.items[*index]))
             .max_by(|a, b| {
                 normal
                     .dot(a.normal())
@@ -122,20 +130,22 @@ impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
 
     /// Checks all items, if any item is further away from the normal than the maximum expected bucket size, remove and re-add.
     pub fn refresh(&mut self) {
-        let mut items_outside_bins = Vec::<T>::new();
         for bin in self.bins.iter_mut() {
-            items_outside_bins.extend(bin.items.extract_if(.., |item| {
-                f32::acos(item.normal().dot(bin.normal)) > bin.max_geodesic_distance
-            }))
+            bin.indices.clear();
         }
-        for item in items_outside_bins {
-            self.count -= 1;
-            self.insert(item);
+        // Re-assign each item to the closest bin
+        for (idx, item) in self.items.iter().enumerate() {
+            let closest_bin = self
+                .bins
+                .iter_mut()
+                .max_by(|a, b| {
+                    item.normal()
+                        .dot(a.normal)
+                        .partial_cmp(&item.normal().dot(b.normal))
+                        .unwrap()
+                })
+                .unwrap();
+            closest_bin.indices.push(idx);
         }
-    }
-
-    /// Returns amount of items within the sphere bin
-    pub fn count(&self) -> usize {
-        self.count
     }
 }

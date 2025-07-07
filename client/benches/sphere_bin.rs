@@ -29,7 +29,7 @@ fn tectonics_benchmark(c: &mut Criterion) {
     c.bench_function("Tectonics particle simulation", |b| {
         b.iter(|| {
             for _ in 0..ITERATIONS {
-                //tectonics.simulate(&mut rng);
+                tectonics.simulate(&mut rng);
             }
         });
     });

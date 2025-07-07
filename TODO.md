@@ -36,4 +36,4 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 
 
 ### Current order
-Try to create and remove particles instead of using forces. Create if none are within a tile, and remove if overlapping.
+Change particle height depending on interaction with other plates, then slowly go back to the default for each plate type.

@@ -14,7 +14,7 @@ pub struct Plate {
     pub drift_direction: Vec2,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct PlateParticle {
     /// Unit sphere normal
     pub position: Vec3,

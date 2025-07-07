@@ -46,8 +46,8 @@ fn setup(config: Res<TectonicsPluginConfig>, mut commands: Commands, mut rng: Re
     let particle_sphere = ParticleSphere::from_config(config.particle_config);
     let tectonics = Tectonics::from_config(config.tectonics_config, &particle_sphere, &mut rng.0);
     commands.insert_resource(TectonicsStartTime(std::time::Instant::now()));
-    commands.insert_resource(particle_sphere);
     commands.insert_resource(tectonics);
+    commands.insert_resource(particle_sphere);
 }
 
 fn draw_particles(
@@ -62,15 +62,26 @@ fn draw_particles(
             plate.color,
         );
     }
-    for particle in tectonics.particles.iter() {
+    for (i, particle) in tectonics.particles.iter().enumerate() {
         gizmos.cross(
             Isometry3d {
                 translation: (particle.position * particle.height * 1.05).into(),
                 rotation: Quat::from_rotation_arc(Vec3::Z, particle.position),
             },
             16. * PI / particle_sphere.tiles.len() as f32,
-            tectonics.plates[particle.plate_index].color.with_alpha(0.3),
+            tectonics.plates[particle.plate_index].color.with_alpha(0.4),
         );
+        let plate_color = tectonics.plates[particle.plate_index].color;
+        for other_particle in tectonics.links[&i]
+            .iter()
+            .map(|o| &tectonics.particles.items[*o])
+        {
+            gizmos.line(
+                particle.position * 1.05,
+                other_particle.position * 1.05,
+                plate_color.with_alpha(0.1),
+            );
+        }
     }
 }
 
@@ -81,10 +92,9 @@ fn simulate_system(
     mut tectonics_iteration: ResMut<TectonicsIteration>,
     mut debug_diagnostics: ResMut<DebugDiagnostics>,
     mut next_state: ResMut<NextState<SimulationState>>,
-    mut gizmos: Gizmos,
 ) {
     if tectonics_iteration.0 < tectonics.config.iterations {
-        tectonics.simulate(&mut rng.0, &mut gizmos);
+        tectonics.simulate(&mut rng.0);
         tectonics_iteration.0 += 1;
     } else {
         debug_diagnostics.tectonics_time = Some(tectonics_start_time.0.elapsed());

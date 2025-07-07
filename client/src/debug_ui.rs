@@ -155,7 +155,8 @@ fn update_tectonics(
 ) {
     **texts.p0().single_mut().unwrap() = tectonics
         .particles
-        .count()
+        .items
+        .len()
         .to_string()
         // Thousands seperator
         .as_bytes()

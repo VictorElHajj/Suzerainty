@@ -40,7 +40,17 @@ impl ParticleSphere {
             let face_normal = vec_utils::f64_3_to_f32_3(&face.center().pos());
             let mut adjacent = face
                 .vertices()
-                .flat_map(|v| v.faces().map(|f| f.index()).collect::<Vec<usize>>())
+                .flat_map(|v| {
+                    v.faces()
+                        .filter_map(|f| {
+                            if f.index() != face.index() {
+                                Some(f.index())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<usize>>()
+                })
                 .collect::<Vec<usize>>();
             adjacent.sort_unstable();
             adjacent.dedup();
