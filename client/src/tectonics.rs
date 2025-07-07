@@ -69,7 +69,7 @@ fn draw_particles(
                 rotation: Quat::from_rotation_arc(Vec3::Z, particle.position),
             },
             16. * PI / particle_sphere.tiles.len() as f32,
-            tectonics.plates[particle.plate_index].color.with_alpha(0.4),
+            tectonics.plates[particle.plate_index].color.with_alpha(0.2),
         );
         let plate_color = tectonics.plates[particle.plate_index].color;
         for other_particle in tectonics.links[&i]

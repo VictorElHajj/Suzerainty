@@ -37,3 +37,9 @@ How to optimize particle lookups? Divide sphere into buckets again, and check al
 
 ### Current order
 Change particle height depending on interaction with other plates, then slowly go back to the default for each plate type.
+
+Perhaps spread out repulsion force to all linked particles instead of just the one particle in each interaction? Should "spread out" the forces..
+
+Try setting friction to 0 and stop introducing energy with the plate force.
+
+Try applying only half the energy to the particles and then spreading the other half out evenly across the plate.

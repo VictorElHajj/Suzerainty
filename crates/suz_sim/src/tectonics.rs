@@ -1,10 +1,8 @@
-use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use bevy::{
-    color::{Alpha, Gray, LinearRgba},
+    color::LinearRgba,
     ecs::resource::Resource,
-    gizmos::gizmos::Gizmos,
     math::{EulerRot, Quat, Vec2, Vec3},
 };
 use rand::Rng;
@@ -14,6 +12,7 @@ use crate::{
     particle_sphere::ParticleSphere,
     plate::{Plate, PlateParticle, PlateType},
     sphere_bins::{Binnable, SphereBins},
+    vec_utils::geodesic_distance,
 };
 
 pub const OCEANIC_PARTICLE_MASS: f32 = 1.;
@@ -276,27 +275,34 @@ impl Tectonics {
                     .particles
                     .get_within(particle.position, self.config.particle_force_radius)
                 {
-                    if particle.plate_index == other_particle.plate_index {
+                    if particle.id == other_particle.id {
                         continue;
                     }
 
-                    let geodesic_distance =
-                        f32::acos(particle.position.dot(other_particle.position));
-                    let force = (1.0 - geodesic_distance / self.config.particle_force_radius)
+                    let force = -(1.0
+                        - geodesic_distance(particle.position, other_particle.position)
+                            / self.config.particle_force_radius)
+                        .ln()
                         * self.config.repulsive_force_modifier;
 
-                    interaction_force += force * (particle.position - other_particle.position);
+                    let force_modifier = if particle.plate_index == other_particle.plate_index {
+                        0.01
+                    } else {
+                        1.0
+                    };
+
+                    interaction_force +=
+                        force * force_modifier * (particle.position - other_particle.position);
                 }
 
                 for other_particle in self.links[&particle.id]
                     .iter()
                     .map(|index| &self.particles.items[*index])
                 {
-                    let geodesic_distance =
-                        f32::acos(particle.position.dot(other_particle.position));
-                    let displacement = self.ideal_distance - geodesic_distance;
-                    let force =
-                        (self.config.link_spring_constant * displacement).clamp(-100., 100.);
+                    let displacement = self.ideal_distance
+                        - geodesic_distance(particle.position, other_particle.position);
+                    let displacement = displacement.signum() * displacement.powi(2);
+                    let force = self.config.link_spring_constant * displacement;
 
                     interaction_force += force * (particle.position - other_particle.position);
                 }

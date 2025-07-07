@@ -17,3 +17,8 @@ pub fn vec3_to_f64_3(input: Vec3) -> [f64; 3] {
     let arr: [f32; 3] = input.into();
     arr.map(|p| p as f64)
 }
+
+#[inline]
+pub fn geodesic_distance(a: Vec3, b: Vec3) -> f32 {
+    f32::acos(a.dot(b).clamp(-1., 1.))
+}

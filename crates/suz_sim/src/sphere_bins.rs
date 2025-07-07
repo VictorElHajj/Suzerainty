@@ -3,6 +3,8 @@ use std::f32::consts::PI;
 use bevy::math::Vec3;
 use rayon::prelude::*;
 
+use crate::vec_utils::geodesic_distance;
+
 pub trait Binnable: Sized + Send + Sync {
     fn normal(&self) -> Vec3;
     fn id(&self) -> usize;
@@ -67,10 +69,8 @@ impl<const BINS: usize, T: Binnable> SphereBins<BINS, T> {
         self.bins
             .iter()
             .filter(move |bin| {
-                // Get sphere distance between input normal and bin normal
-                let geodesic_distance = f32::acos(normal.dot(bin.normal));
                 // if sphere distance is less than bin size + radius
-                geodesic_distance < bin.max_geodesic_distance + radius
+                geodesic_distance(normal, bin.normal) < bin.max_geodesic_distance + radius
             })
             .flat_map(|bin| bin.indices.iter())
             .filter_map(move |index| {

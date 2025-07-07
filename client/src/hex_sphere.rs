@@ -11,7 +11,7 @@ use std::{num::NonZero, time::Instant};
 use subsphere::Vertex;
 use subsphere::{Face, Sphere, proj::Fuller};
 use suz_sim::tectonics::Tectonics;
-use suz_sim::vec_utils;
+use suz_sim::vec_utils::{self, geodesic_distance};
 
 /// A helper for the modified faces with a central vertex
 #[derive(Clone)]
@@ -312,8 +312,8 @@ fn draw_selected(
             .particles
             .get_within(*normal, tectonics.config.particle_force_radius)
         {
-            let geodesic_distance = f32::acos(normal.dot(particle.position));
-            let distance_fraction = geodesic_distance / tectonics.config.particle_force_radius;
+            let distance_fraction = geodesic_distance(*normal, particle.position)
+                / tectonics.config.particle_force_radius;
             gizmos.arrow(
                 particle.position,
                 particle.position * (1.1 - distance_fraction / 10.),
