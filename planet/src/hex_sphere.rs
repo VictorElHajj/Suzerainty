@@ -11,7 +11,7 @@ use std::{num::NonZero, time::Instant};
 use subsphere::Vertex;
 use subsphere::{Face, Sphere, proj::Fuller};
 use suz_sim::tectonics::Tectonics;
-use suz_sim::vec_utils::{self, geodesic_distance};
+use suz_sim::vec_utils::{self};
 
 /// A helper for the modified faces with a central vertex
 #[derive(Clone)]
@@ -227,7 +227,6 @@ pub struct CurrentMousePick(pub Option<MousePickInfo>);
 
 pub struct MousePickInfo {
     pub normal: Vec3,
-    // Todo, make this a reference and have the tile and hexsphere be global?
     pub tile: Tile,
 }
 
@@ -297,28 +296,8 @@ fn draw_selected(
                 rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
                 translation: (normal * tile.height).into(),
             },
-            tectonics.config.particle_force_radius,
-            LinearRgba::BLUE,
-        );
-        gizmos.circle(
-            Isometry3d {
-                rotation: Quat::from_rotation_arc(Vec3::Z, *normal),
-                translation: (normal * tile.height).into(),
-            },
             tectonics.ideal_distance,
             LinearRgba::GREEN,
         );
-        for particle in tectonics
-            .particles
-            .get_within(*normal, tectonics.config.particle_force_radius)
-        {
-            let distance_fraction = geodesic_distance(*normal, particle.position)
-                / tectonics.config.particle_force_radius;
-            gizmos.arrow(
-                particle.position,
-                particle.position * (1.1 - distance_fraction / 10.),
-                LinearRgba::new(distance_fraction, 1.0, 0.0, 1.0),
-            );
-        }
     }
 }

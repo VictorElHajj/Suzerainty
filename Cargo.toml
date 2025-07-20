@@ -1,3 +1,3 @@
 [workspace]
-members = ["server", "client", "crates/suz_sim"]
+members = ["planet", "crates/suz_sim", "crates/soft_sphere"]
 resolver = "3"

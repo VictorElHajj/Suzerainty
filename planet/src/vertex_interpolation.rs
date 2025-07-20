@@ -2,8 +2,8 @@ use crate::hex_sphere::{HexSphere, HexSphereMeshHandle};
 use crate::tectonics::TectonicsIteration;
 use bevy::prelude::*;
 use rayon::prelude::*;
-use suz_sim::sphere_bins::Binnable;
 use suz_sim::tectonics::{OCEANIC_PARTICLE_HEIGHT, Tectonics};
+use suz_sim::vec_utils;
 
 pub fn interpolate_vertices(
     mut meshes: ResMut<Assets<Mesh>>,
@@ -23,13 +23,26 @@ pub fn interpolate_vertices(
                 let mut weight_total = 0.0;
                 let tile_normal = tile.normal;
                 let tile_center = tile.center;
-                for particle in tectonics
-                    .particles
-                    .get_within(tile_normal, tectonics.config.particle_force_radius)
+                for point_mass in tectonics
+                    .plates
+                    .iter()
+                    .filter_map(|plate| {
+                        if plate.shape.within_bounding_spherical_cap(tile.normal) {
+                            Some(&plate.shape)
+                        } else {
+                            None
+                        }
+                    })
+                    .flat_map(|shape| shape.point_masses.iter())
+                    .filter(|point_mass| {
+                        vec_utils::geodesic_distance(point_mass.position, tile.normal)
+                            < tectonics.config.particle_force_radius
+                    })
                 {
-                    let dist = 1.0 - tile_normal.dot(particle.normal()); // geodesic cosine distance
+                    let dist = 1.0 - tile_normal.dot(point_mass.position); // geodesic cosine distance
                     let weight = 1.0 / (dist + 0.01); // closer = higher weight, avoid div by zero
-                    weighted_sum += particle.height * weight;
+                    // TODO: Use spring compression as height
+                    weighted_sum += point_mass.mass * weight;
                     weight_total += weight;
                 }
                 let new_height = if weight_total > 0.0 {

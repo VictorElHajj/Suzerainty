@@ -62,24 +62,24 @@ fn draw_particles(
             plate.color,
         );
     }
-    for (i, particle) in tectonics.particles.iter().enumerate() {
-        gizmos.cross(
-            Isometry3d {
-                translation: (particle.position * particle.height * 1.05).into(),
-                rotation: Quat::from_rotation_arc(Vec3::Z, particle.position),
-            },
-            16. * PI / particle_sphere.tiles.len() as f32,
-            tectonics.plates[particle.plate_index].color.with_alpha(0.2),
-        );
-        let plate_color = tectonics.plates[particle.plate_index].color;
-        for other_particle in tectonics.links[&i]
-            .iter()
-            .map(|o| &tectonics.particles.items[*o])
-        {
+    for plate in &tectonics.plates {
+        for point_mass in &plate.shape.point_masses {
+            gizmos.cross(
+                Isometry3d {
+                    translation: (point_mass.position * 1.02).into(),
+                    rotation: Quat::from_rotation_arc(Vec3::Z, point_mass.position),
+                },
+                16. * PI / particle_sphere.tiles.len() as f32,
+                plate.color,
+            );
+        }
+        for spring in &plate.shape.springs {
+            let point_mass_a = &plate.shape.point_masses[spring.anchor_a];
+            let point_mass_b = &plate.shape.point_masses[spring.anchor_b];
             gizmos.line(
-                particle.position * 1.05,
-                other_particle.position * 1.05,
-                plate_color.with_alpha(0.1),
+                point_mass_a.position * 1.02,
+                point_mass_b.position * 1.02,
+                plate.color.with_alpha(0.5),
             );
         }
     }

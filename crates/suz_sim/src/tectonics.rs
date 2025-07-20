@@ -1,18 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::{
-    color::LinearRgba,
     ecs::resource::Resource,
     math::{EulerRot, Quat, Vec2, Vec3},
 };
 use rand::Rng;
-use rayon::iter::ParallelIterator;
 
 use crate::{
     particle_sphere::ParticleSphere,
-    plate::{Plate, PlateParticle, PlateType},
-    sphere_bins::{Binnable, SphereBins},
-    vec_utils::geodesic_distance,
+    plate::{Plate, PlateType},
 };
 
 pub const OCEANIC_PARTICLE_MASS: f32 = 1.;
@@ -39,7 +35,9 @@ pub struct TectonicsConfiguration {
     /// Modifier to the plate particle repulsive force, is 4x to particles of other plates
     pub repulsive_force_modifier: f32,
     /// Spring constant used for particle links
-    pub link_spring_constant: f32,
+    pub spring_constant: f32,
+    // Dampener coefficient for the spring forces, used to dampen oscillations
+    pub dampener_coefficient: f32,
     /// Modifier to the force applies by the plate rotational axis to plate particles.
     pub plate_force_modifier: f32,
     /// The rate at which the plate axis of rotation drifts in position
@@ -50,12 +48,48 @@ pub struct TectonicsConfiguration {
     pub friction_coefficient: f32,
 }
 
+struct PlateBuilder {
+    plate: Plate,
+    tile_to_point_mass: HashMap<usize, usize>,
+}
+
+impl PlateBuilder {
+    fn new(plate: Plate) -> Self {
+        Self {
+            plate,
+            tile_to_point_mass: HashMap::new(),
+        }
+    }
+    fn add_point_mass(
+        &mut self,
+        tile_index: usize,
+        point_mass: soft_sphere::PointMass,
+        particle_sphere: &ParticleSphere,
+        config: &TectonicsConfiguration,
+    ) {
+        let point_mass_index = self.plate.shape.point_masses.len();
+        self.plate.shape.point_masses.push(point_mass);
+        self.tile_to_point_mass.insert(tile_index, point_mass_index);
+        // Add springs to already-added adjacent tiles (if they are in this plate)
+        for adj_tile in &particle_sphere.tiles[tile_index].adjacent {
+            if let Some(&adj_index) = self.tile_to_point_mass.get(adj_tile) {
+                let rest_length = self.plate.shape.point_masses[point_mass_index]
+                    .geodesic_distance(&self.plate.shape.point_masses[adj_index]);
+                self.plate.shape.springs.push(soft_sphere::Spring {
+                    anchor_a: point_mass_index,
+                    anchor_b: adj_index,
+                    rest_length,
+                    spring_constant: config.spring_constant,
+                    damping_coefficient: config.dampener_coefficient,
+                });
+            }
+        }
+    }
+}
+
 #[derive(Resource)]
 pub struct Tectonics {
     pub config: TectonicsConfiguration,
-    pub particles: SphereBins<BIN_COUNT, PlateParticle>,
-    /// Particle links
-    pub links: HashMap<usize, Vec<usize>>,
     /// Average distance if all particles were spaced out evenly
     pub ideal_distance: f32,
     pub plates: Vec<Plate>,
@@ -71,9 +105,7 @@ impl Tectonics {
         assert!((0.0..=1.0).contains(&config.major_plate_fraction));
         assert!((0.0..=1.0).contains(&config.continental_rate));
 
-        let mut particles = SphereBins::<BIN_COUNT, PlateParticle>::new();
-        let mut plates = Vec::new();
-        let mut links = HashMap::<usize, Vec<usize>>::new();
+        let mut plate_builders: Vec<PlateBuilder> = Vec::new();
         let ideal_distance = f32::acos(1. - 2. / particle_sphere.tiles.len() as f32) * 2.;
 
         let mut generated_majors = 0;
@@ -88,35 +120,19 @@ impl Tectonics {
             / (1. - config.major_plate_fraction)) as usize;
 
         let starting_tile = rng.random_range(0..particle_sphere.tiles.len());
-        let mut global_surrounding_unvisited_tiles = Vec::<usize>::new();
-        let mut next_surrounding_unvisited_tiles = vec![starting_tile];
-        let mut added_tiles = HashSet::<usize>::new();
-        added_tiles.insert(starting_tile);
+        let mut available_tiles: HashSet<usize> = (0..particle_sphere.tiles.len()).collect();
+        available_tiles.remove(&starting_tile);
+        let mut adjacent_tiles = vec![starting_tile];
 
-        while added_tiles.len() < particle_sphere.tiles.len() {
-            let plate_color = LinearRgba::new(rng.random(), rng.random(), rng.random(), 1.).into();
-            let plate_type =
-                if (added_tiles.len() as f32 / tile_count as f32) < config.continental_rate {
-                    PlateType::Continental
-                } else {
-                    PlateType::Oceanic
-                };
-            let plate = Plate {
-                plate_type: plate_type.clone(),
-                color: plate_color,
-                axis_of_rotation: Vec3::new(
-                    rng.random_range(-1.0..1.0),
-                    rng.random_range(-1.0..1.0),
-                    rng.random_range(-1.0..1.0),
-                )
-                .normalize(),
-                drift_direction: Vec2::new(
-                    rng.random_range(-1.0..1.0),
-                    rng.random_range(-1.0..1.0),
-                )
-                .normalize(),
+        while available_tiles.len() > 0 || adjacent_tiles.len() > 0 {
+            let plate_type = if ((tile_count - available_tiles.len()) as f32 / tile_count as f32)
+                < config.continental_rate
+            {
+                PlateType::Continental
+            } else {
+                PlateType::Oceanic
             };
-            // Generate minor plate if we have more major plates than minor plates but there are still minor plates left to generate
+            let mut builder = PlateBuilder::new(Plate::random(plate_type, rng));
             let tiles_to_take = if (generated_majors as f32 / generated_minors as f32)
                 > config.major_plate_fraction
             {
@@ -127,124 +143,138 @@ impl Tectonics {
                 major_tile_count
             };
 
-            // Temp particle list, if resulting plate has too few particles merge with closest
-            let mut temp_particle_vec = Vec::<PlateParticle>::new();
-
             // Add random adjacent tile, add thats tile to the surrounding unvisited tiles
             for _ in 0..tiles_to_take {
-                if next_surrounding_unvisited_tiles.is_empty() {
+                // No unvisited tiles left
+                if adjacent_tiles.is_empty() {
                     break;
                 }
                 // Chose tile, remember it has been used and remove from adjacent unvisited
-                let random_adjacent_tile_index: usize =
-                    rng.random_range(0..next_surrounding_unvisited_tiles.len());
-                added_tiles.insert(next_surrounding_unvisited_tiles[random_adjacent_tile_index]);
-                let chosen_tile = &particle_sphere.tiles
-                    [next_surrounding_unvisited_tiles.swap_remove(random_adjacent_tile_index)];
-
-                // Add tile adjacents to particle links (remember, particles will have the id of the tile that spawned them)
-                links.insert(chosen_tile.index, chosen_tile.adjacent.clone());
-
-                // Create particle from chosen tile
-                temp_particle_vec.push(PlateParticle {
-                    position: chosen_tile.normal,
-                    height: if plate_type == PlateType::Continental {
-                        CONTINENTAL_PARTICLE_HEIGHT
-                    } else {
-                        OCEANIC_PARTICLE_HEIGHT
-                    },
-                    plate_index: plates.len(),
-                    mass: if plate_type == PlateType::Continental {
-                        CONTINENTAL_PARTICLE_MASS
-                    } else {
-                        OCEANIC_PARTICLE_MASS
-                    },
-                    velocity: Vec3::ZERO,
-                    acceleration: Vec3::ZERO,
-                    id: chosen_tile.index,
-                });
-
-                // Update univisted tiles with new adjacents
-                next_surrounding_unvisited_tiles.extend(
-                    chosen_tile
+                let random_adjacent_tile: usize =
+                    adjacent_tiles.swap_remove(rng.random_range(0..adjacent_tiles.len()));
+                let mass = if plate_type == PlateType::Continental {
+                    CONTINENTAL_PARTICLE_MASS
+                } else {
+                    OCEANIC_PARTICLE_MASS
+                };
+                let point_mass = soft_sphere::PointMass::new(
+                    particle_sphere.tiles[random_adjacent_tile].normal,
+                    mass,
+                );
+                builder.add_point_mass(random_adjacent_tile, point_mass, particle_sphere, &config);
+                adjacent_tiles.extend(
+                    particle_sphere.tiles[random_adjacent_tile]
                         .adjacent
                         .iter()
-                        .filter(|index| !added_tiles.contains(*index)),
+                        .filter(|index| available_tiles.remove(index)),
                 );
-                next_surrounding_unvisited_tiles.sort_unstable();
-                next_surrounding_unvisited_tiles.dedup();
             }
-
-            if temp_particle_vec.len() >= config.min_plate_size {
-                plates.push(plate);
-                for particle in temp_particle_vec {
-                    particles.insert(particle);
-                }
-            } else if !temp_particle_vec.is_empty() {
-                // Find closest existing plate
-                let closest_plate_index = particles
-                    .get_closest(temp_particle_vec[0].normal())
-                    .plate_index;
-                for particle in temp_particle_vec {
-                    particles.insert(PlateParticle {
-                        position: particle.position,
-                        height: if plates[closest_plate_index].plate_type == PlateType::Continental
+            if builder.plate.shape.point_masses.len() >= config.min_plate_size {
+                plate_builders.push(builder);
+            } else if !builder.plate.shape.point_masses.is_empty() {
+                // Plate is too small, merge into closest plate
+                let closest_plate_builder = plate_builders
+                    .iter_mut()
+                    .min_by(|pb_a, pb_b| {
+                        let closest_point_mass_a = pb_a
+                            .plate
+                            .shape
+                            .point_masses
+                            .iter()
+                            .map(|point_mass| {
+                                point_mass.geodesic_distance(&builder.plate.shape.point_masses[0])
+                            })
+                            .min_by(|a, b| a.partial_cmp(b).unwrap())
+                            .unwrap();
+                        let closest_point_mass_b = pb_b
+                            .plate
+                            .shape
+                            .point_masses
+                            .iter()
+                            .map(|point_mass| {
+                                point_mass.geodesic_distance(&builder.plate.shape.point_masses[0])
+                            })
+                            .min_by(|a, b| a.partial_cmp(b).unwrap())
+                            .unwrap();
+                        closest_point_mass_a
+                            .partial_cmp(&closest_point_mass_b)
+                            .expect("Failed to compare point mass distances, check for NaN")
+                    })
+                    .expect("Failed to find closest plate when plate was too small");
+                // For each point mass in the too-small plate, add to closest plate and add springs
+                for (&tile_index, &pm_index) in builder.tile_to_point_mass.iter() {
+                    let point_mass = &builder.plate.shape.point_masses[pm_index];
+                    let new_index = closest_plate_builder.plate.shape.point_masses.len();
+                    closest_plate_builder
+                        .plate
+                        .shape
+                        .point_masses
+                        .push(soft_sphere::PointMass {
+                            position: point_mass.position,
+                            mass: if closest_plate_builder.plate.plate_type
+                                == PlateType::Continental
+                            {
+                                CONTINENTAL_PARTICLE_MASS
+                            } else {
+                                OCEANIC_PARTICLE_MASS
+                            },
+                            velocity: Vec3::ZERO,
+                            force: Vec3::ZERO,
+                            prev_force: Vec3::ZERO,
+                        });
+                    closest_plate_builder
+                        .tile_to_point_mass
+                        .insert(tile_index, new_index);
+                    for adj_tile in &particle_sphere.tiles[tile_index].adjacent {
+                        if let Some(&adjacent_index) =
+                            closest_plate_builder.tile_to_point_mass.get(adj_tile)
                         {
-                            CONTINENTAL_PARTICLE_HEIGHT
-                        } else {
-                            OCEANIC_PARTICLE_HEIGHT
-                        },
-                        plate_index: closest_plate_index,
-                        mass: if plates[closest_plate_index].plate_type == PlateType::Continental {
-                            CONTINENTAL_PARTICLE_MASS
-                        } else {
-                            OCEANIC_PARTICLE_MASS
-                        },
-                        velocity: Vec3::ZERO,
-                        acceleration: Vec3::ZERO,
-                        id: particle.id,
-                    });
+                            let rest_length = closest_plate_builder.plate.shape.point_masses
+                                [new_index]
+                                .geodesic_distance(
+                                    &closest_plate_builder.plate.shape.point_masses[adjacent_index],
+                                );
+                            closest_plate_builder
+                                .plate
+                                .shape
+                                .springs
+                                .push(soft_sphere::Spring {
+                                    anchor_a: new_index,
+                                    anchor_b: adjacent_index,
+                                    rest_length,
+                                    spring_constant: config.spring_constant,
+                                    damping_coefficient: config.dampener_coefficient,
+                                });
+                        }
+                    }
                 }
             }
 
-            // Add remaining unvisited to global unvisited, update to remove used ones.
-            global_surrounding_unvisited_tiles.extend(&next_surrounding_unvisited_tiles);
-            global_surrounding_unvisited_tiles.retain(|index| !added_tiles.contains(index));
-            // Pick a new starting point for the global unvisited, if there are tiles left
-            if !(added_tiles.len() == particle_sphere.tiles.len()) {
-                next_surrounding_unvisited_tiles = vec![
-                    global_surrounding_unvisited_tiles
-                        [rng.random_range(0..global_surrounding_unvisited_tiles.len())],
-                ];
+            // Return adjacent tiles to available tiles, pick a new starting point
+            available_tiles.extend(adjacent_tiles.drain(..));
+            if available_tiles.len() > 0 {
+                let available_tiles_vec: Vec<usize> = available_tiles.iter().cloned().collect();
+                let starting_tile =
+                    available_tiles_vec[rng.random_range(0..available_tiles_vec.len())];
+                available_tiles.remove(&starting_tile);
+                adjacent_tiles.push(starting_tile);
             }
         }
 
-        // This will make particles.items indexable by particle id
-        particles.items.sort_unstable_by_key(|particle| particle.id);
+        let point_mass_count = plate_builders
+            .iter()
+            .map(|pb| pb.plate.shape.point_masses.len())
+            .sum::<usize>();
         assert!(
-            particles.items.len() == particle_sphere.tiles.len(),
-            "Particle count not same as Particle Tile count!"
+            point_mass_count == particle_sphere.tiles.len(),
+            "Point mass count {} not same as Particle Tile {} count!",
+            point_mass_count,
+            particle_sphere.tiles.len()
         );
-        let mut dedup_particles: Vec<PlateParticle> = particles.iter().cloned().collect();
-        dedup_particles.dedup_by_key(|p| p.id);
-        assert!(
-            particles.items.len() == dedup_particles.len(),
-            "Particles contanied duplicates",
-        );
-
-        // Remove links that cross different plates
-        for (particle_index, connections) in &mut links {
-            let plate_index = particles.items[*particle_index].plate_index;
-            connections.retain(|connected_index| {
-                particles.items[*connected_index].plate_index == plate_index
-            });
-        }
 
         Tectonics {
             config,
-            links,
-            particles,
-            plates,
+            plates: plate_builders.drain(..).map(|pb| pb.plate).collect(),
             ideal_distance,
         }
     }
@@ -252,86 +282,28 @@ impl Tectonics {
     // Each particle will be forced to have the velocity matching rotation around the ownings plate axis of rotation
     // Then we adjust that velocity depending on other particles
     pub fn simulate(&mut self, rng: &mut rand::rngs::StdRng) {
-        // 1. Calculate acceleration for each particle
-        let new_particle_accelerations: Vec<Vec3> = self
-            .particles
-            .par_iter()
-            .map(|particle| {
-                let plate_force = self.plates[particle.plate_index]
+        // Apply forces and update velocity and position
+        for plate in &mut self.plates {
+            plate.shape.apply_external_force(|point_mass| {
+                let plate_force = plate
                     .axis_of_rotation
-                    .cross(particle.position)
+                    .cross(point_mass.position)
                     * self.config.plate_force_modifier
                     // We make this force mass independent so oceanic and continental plates move equally
-                    * particle.mass;
-                let friction_force = if particle.velocity.length() > 0. {
-                    -particle.velocity * particle.mass * self.config.friction_coefficient
+                    * point_mass.mass;
+                let friction_force = if point_mass.velocity.length() > 0. {
+                    -point_mass.velocity * point_mass.mass * self.config.friction_coefficient
                 } else {
                     Vec3::ZERO
                 };
-
-                let mut interaction_force = Vec3::ZERO;
-
-                for other_particle in self
-                    .particles
-                    .get_within(particle.position, self.config.particle_force_radius)
-                {
-                    if particle.id == other_particle.id {
-                        continue;
-                    }
-
-                    let force = -(1.0
-                        - geodesic_distance(particle.position, other_particle.position)
-                            / self.config.particle_force_radius)
-                        .ln()
-                        * self.config.repulsive_force_modifier;
-
-                    let force_modifier = if particle.plate_index == other_particle.plate_index {
-                        0.01
-                    } else {
-                        1.0
-                    };
-
-                    interaction_force +=
-                        force * force_modifier * (particle.position - other_particle.position);
-                }
-
-                for other_particle in self.links[&particle.id]
-                    .iter()
-                    .map(|index| &self.particles.items[*index])
-                {
-                    let displacement = self.ideal_distance
-                        - geodesic_distance(particle.position, other_particle.position);
-                    let displacement = displacement.signum() * displacement.powi(2);
-                    let force = self.config.link_spring_constant * displacement;
-
-                    interaction_force += force * (particle.position - other_particle.position);
-                }
-
-                (plate_force + interaction_force + friction_force) / particle.mass
-            })
-            .collect();
-        // 2. Apply forces and update velocity and position
-        // We used a Velocity Verlet integration
-        for (i, particle) in self.particles.iter_mut().enumerate() {
-            let displacement = particle.velocity * self.config.timestep
-                + 0.5 * particle.acceleration * self.config.timestep.powi(2);
-            // Project displacement onto tangent plane of current position
-            let tangent_disp =
-                displacement - particle.position * displacement.dot(particle.position);
-            let angle = tangent_disp.length();
-            if angle > 0.0 {
-                let axis = particle.position.cross(tangent_disp).normalize();
-                let rot = Quat::from_axis_angle(axis, angle);
-                particle.position = (rot * particle.position).normalize(); // Normalize to avoid error build up, should always be unit vectors
-            }
-            particle.velocity = particle.velocity
-                + (particle.acceleration + new_particle_accelerations[i]) / 2.
-                    * self.config.timestep;
-            particle.acceleration = new_particle_accelerations[i];
+                plate_force + friction_force
+            });
+            plate.shape.apply_spring_forces();
+            // TODO: Update and add frame forces to maintain shape
+            // TODO: Simulate collisions
+            plate.shape.update(self.config.timestep);
         }
-        // 3. Update the sphere bin datastructure as some particles might leave their current bin
-        self.particles.refresh();
-        // 4. Randomly modify each plates axis of rotation slightly
+        // Randomly modify each plates axis of rotation slightly
         for plate in self.plates.iter_mut() {
             plate.drift_direction = (plate.drift_direction
                 + Vec2::new(

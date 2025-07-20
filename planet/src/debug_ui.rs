@@ -78,6 +78,17 @@ struct TectonicsIterationText;
 #[derive(Component)]
 struct TectonicsTimeText;
 
+fn add_thousands_seperator(input: String) -> String {
+    input
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join(",")
+}
+
 fn update_fps(
     bevy_diagnostics: Res<DiagnosticsStore>,
     mut fps_text_query: Query<&mut Text, With<FpsText>>,
@@ -119,18 +130,12 @@ fn add_mesh_gen_stats(
         Query<&mut Text, With<SubdivisionsText>>,
     )>,
 ) {
-    **texts.p0().single_mut().unwrap() = diagnostics
-        .tiles
-        .expect("Tiles should be set during MeshGen state")
-        .to_string()
-        // Thousands seperator
-        .as_bytes()
-        .rchunks(3)
-        .rev()
-        .map(std::str::from_utf8)
-        .collect::<Result<Vec<&str>, _>>()
-        .unwrap()
-        .join(",");
+    **texts.p0().single_mut().unwrap() = add_thousands_seperator(
+        diagnostics
+            .tiles
+            .expect("Tiles should be set during MeshGen state")
+            .to_string(),
+    );
     let mesh_gen_duration = diagnostics
         .mesh_gen_time
         .expect("Mesh generation time should be set during MeshGen state");
@@ -153,29 +158,15 @@ fn update_tectonics(
         Query<&mut Text, With<TectonicsIterationText>>,
     )>,
 ) {
-    **texts.p0().single_mut().unwrap() = tectonics
-        .particles
-        .items
-        .len()
-        .to_string()
-        // Thousands seperator
-        .as_bytes()
-        .rchunks(3)
-        .rev()
-        .map(std::str::from_utf8)
-        .collect::<Result<Vec<&str>, _>>()
-        .unwrap()
-        .join(",");
-    **texts.p1().single_mut().unwrap() = tectonics_iteration
-        .0
-        .to_string()
-        .as_bytes()
-        .rchunks(3)
-        .rev()
-        .map(std::str::from_utf8)
-        .collect::<Result<Vec<&str>, _>>()
-        .unwrap()
-        .join(",");
+    **texts.p0().single_mut().unwrap() = add_thousands_seperator(
+        tectonics
+            .plates
+            .iter()
+            .map(|plate| plate.shape.point_masses.len())
+            .sum::<usize>()
+            .to_string(),
+    );
+    **texts.p1().single_mut().unwrap() = add_thousands_seperator(tectonics_iteration.0.to_string());
 }
 
 fn setup(

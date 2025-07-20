@@ -16,7 +16,8 @@ fn tectonics_benchmark(c: &mut Criterion) {
         min_plate_size: 15,
         particle_force_radius: 0.20,
         repulsive_force_modifier: 0.01,
-        link_spring_constant: 0.002,
+        spring_constant: 1.,
+        dampener_coefficient: 0.5,
         plate_force_modifier: 0.02,
         plate_rotation_drift_rate: 0.001,
         timestep: 0.3,
@@ -26,7 +27,7 @@ fn tectonics_benchmark(c: &mut Criterion) {
     let mut rng = rand::rngs::StdRng::seed_from_u64(0);
     let particle_sphere = ParticleSphere::from_config(ParticleSphereConfig { subdivisions: 32 });
     let mut tectonics = Tectonics::from_config(tectonics_config, &particle_sphere, &mut rng);
-    c.bench_function("Tectonics particle simulation", |b| {
+    c.bench_function("Tectonics soft body simulation", |b| {
         b.iter(|| {
             for _ in 0..ITERATIONS {
                 tectonics.simulate(&mut rng);
