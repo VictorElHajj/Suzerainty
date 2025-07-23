@@ -56,7 +56,7 @@ fn main() {
                         plate_force_modifier: 0.04,
                         plate_rotation_drift_rate: 0.001,
                         timestep: 0.10,
-                        iterations: 100_000,
+                        iterations: 200,
                         friction_coefficient: 0.6,
                     },
                     particle_config: ParticleSphereConfig { subdivisions: 64 },

@@ -86,6 +86,19 @@ impl Shape {
         f32::acos(position.dot(self.centroid).clamp(-1., 1.)) < self.bounding_distance
     }
 
+    /// Returns an iterator going over each point mass and the springs it is an anchor for.
+    pub fn iter_point_masses_with_springs(
+        &self,
+    ) -> impl Iterator<Item = (&PointMass, impl Iterator<Item = &Spring>)> {
+        self.point_masses.iter().enumerate().map(|(i, point_mass)| {
+            let springs = self
+                .springs
+                .iter()
+                .filter(move |spring| spring.anchor_a == i || spring.anchor_b == i);
+            (point_mass, springs)
+        })
+    }
+
     // pub fn apply frame force
 
     // pub fn get shape/hull from grahams method

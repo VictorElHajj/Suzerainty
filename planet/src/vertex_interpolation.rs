@@ -23,7 +23,7 @@ pub fn interpolate_vertices(
                 let mut weight_total = 0.0;
                 let tile_normal = tile.normal;
                 let tile_center = tile.center;
-                for point_mass in tectonics
+                for (point_mass, spring_compressions) in tectonics
                     .plates
                     .iter()
                     .filter_map(|plate| {
@@ -33,16 +33,32 @@ pub fn interpolate_vertices(
                             None
                         }
                     })
-                    .flat_map(|shape| shape.point_masses.iter())
-                    .filter(|point_mass| {
-                        vec_utils::geodesic_distance(point_mass.position, tile.normal)
-                            < tectonics.config.particle_force_radius
+                    .flat_map(|shape| {
+                        shape.iter_point_masses_with_springs().filter_map(
+                            |(point_mass, springs)| {
+                                if vec_utils::geodesic_distance(point_mass.position, tile.normal)
+                                    < tectonics.config.particle_force_radius
+                                {
+                                    Some((
+                                        point_mass,
+                                        springs.map(|spring| {
+                                            let pm_a = &shape.point_masses[spring.anchor_a];
+                                            let pm_b = &shape.point_masses[spring.anchor_a];
+                                            let compression =
+                                                spring.rest_length - pm_a.geodesic_distance(&pm_b);
+                                            compression
+                                        }),
+                                    ))
+                                } else {
+                                    None
+                                }
+                            },
+                        )
                     })
                 {
                     let dist = 1.0 - tile_normal.dot(point_mass.position); // geodesic cosine distance
                     let weight = 1.0 / (dist + 0.01); // closer = higher weight, avoid div by zero
-                    // TODO: Use spring compression as height
-                    weighted_sum += point_mass.mass * weight;
+                    weighted_sum += spring_compressions.sum::<f32>() / 2.;
                     weight_total += weight;
                 }
                 let new_height = if weight_total > 0.0 {
