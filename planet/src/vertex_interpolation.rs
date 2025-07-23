@@ -14,6 +14,7 @@ pub fn interpolate_vertices(
 ) {
     if tectonics_iteration.0 % 10 == 0 {
         // 1. For each tile, compute average height from nearby particles, update tile height and center vertex height
+        // TODO: Compute compression for each point mass once, put in spatial datastructure, should speed this up massively
         let tile_results: Vec<_> = hex_sphere
             .tiles
             .par_iter()
@@ -62,7 +63,8 @@ pub fn interpolate_vertices(
                     weight_total += weight;
                 }
                 let new_height = if weight_total > 0.0 {
-                    weighted_sum / weight_total
+                    // TODO: 1.0 should be replaced by plate height for continental vs oceanic
+                    1.0 + weighted_sum / weight_total
                 } else {
                     OCEANIC_PARTICLE_HEIGHT
                 };

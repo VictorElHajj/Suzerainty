@@ -68,14 +68,14 @@ impl PlateBuilder {
         config: &TectonicsConfiguration,
     ) {
         let point_mass_index = self.plate.shape.point_masses.len();
-        self.plate.shape.point_masses.push(point_mass);
+        self.plate.shape.add_point_mass(point_mass);
         self.tile_to_point_mass.insert(tile_index, point_mass_index);
         // Add springs to already-added adjacent tiles (if they are in this plate)
         for adj_tile in &particle_sphere.tiles[tile_index].adjacent {
             if let Some(&adj_index) = self.tile_to_point_mass.get(adj_tile) {
                 let rest_length = self.plate.shape.point_masses[point_mass_index]
                     .geodesic_distance(&self.plate.shape.point_masses[adj_index]);
-                self.plate.shape.springs.push(soft_sphere::Spring {
+                self.plate.shape.add_spring(soft_sphere::Spring {
                     anchor_a: point_mass_index,
                     anchor_b: adj_index,
                     rest_length,
@@ -208,8 +208,7 @@ impl Tectonics {
                     closest_plate_builder
                         .plate
                         .shape
-                        .point_masses
-                        .push(soft_sphere::PointMass {
+                        .add_point_mass(soft_sphere::PointMass {
                             position: point_mass.position,
                             mass: if closest_plate_builder.plate.plate_type
                                 == PlateType::Continental
@@ -237,8 +236,7 @@ impl Tectonics {
                             closest_plate_builder
                                 .plate
                                 .shape
-                                .springs
-                                .push(soft_sphere::Spring {
+                                .add_spring(soft_sphere::Spring {
                                     anchor_a: new_index,
                                     anchor_b: adjacent_index,
                                     rest_length,

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use glam::{Quat, Vec3};
 
 use crate::{point_mass::PointMass, spring::Spring};
@@ -7,6 +9,8 @@ pub struct Shape {
     pub springs: Vec<Spring>,
     centroid: Vec3,
     bounding_distance: f32,
+    /// Hashmap from PointMass index to Spring indices
+    spring_map: HashMap<usize, Vec<usize>>,
 }
 
 impl Shape {
@@ -16,8 +20,31 @@ impl Shape {
             springs: Vec::new(),
             centroid: Vec3::NAN,
             bounding_distance: f32::NAN,
+            spring_map: HashMap::<usize, Vec<usize>>::new(),
         }
     }
+
+    pub fn add_point_mass(&mut self, point_mass: PointMass) {
+        self.spring_map.insert(self.point_masses.len(), vec![]);
+        self.point_masses.push(point_mass);
+    }
+
+    pub fn add_spring(&mut self, spring: Spring) {
+        if let Some(entry) = self.spring_map.get_mut(&spring.anchor_a) {
+            entry.push(self.springs.len());
+        } else {
+            self.spring_map
+                .insert(spring.anchor_a, vec![self.springs.len()]);
+        }
+        if let Some(entry) = self.spring_map.get_mut(&spring.anchor_b) {
+            entry.push(self.springs.len());
+        } else {
+            self.spring_map
+                .insert(spring.anchor_b, vec![self.springs.len()]);
+        }
+        self.springs.push(spring);
+    }
+
     fn zero_forces(&mut self) {
         for point_mass in &mut self.point_masses {
             point_mass.prev_force = point_mass.force;
@@ -91,11 +118,16 @@ impl Shape {
         &self,
     ) -> impl Iterator<Item = (&PointMass, impl Iterator<Item = &Spring>)> {
         self.point_masses.iter().enumerate().map(|(i, point_mass)| {
-            let springs = self
-                .springs
-                .iter()
-                .filter(move |spring| spring.anchor_a == i || spring.anchor_b == i);
-            (point_mass, springs)
+            (
+                point_mass,
+                self.spring_map
+                    .get(&i)
+                    .expect(&format!(
+                        "Tried to get springs for point mass {i} not in spring_map"
+                    ))
+                    .iter()
+                    .map(|spring_index| &self.springs[*spring_index]),
+            )
         })
     }
 
