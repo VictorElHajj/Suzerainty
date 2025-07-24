@@ -27,8 +27,8 @@ pub fn interpolate_vertices(
                             plate.plate_type,
                             springs.map(|spring| {
                                 let pm_a = &plate.shape.point_masses[spring.anchor_a];
-                                let pm_b = &plate.shape.point_masses[spring.anchor_a];
-                                let compression =
+                                let pm_b = &plate.shape.point_masses[spring.anchor_b];
+                                let compression: f32 =
                                     spring.rest_length - pm_a.geodesic_distance(&pm_b);
                                 compression
                             }),
