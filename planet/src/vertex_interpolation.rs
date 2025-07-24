@@ -1,8 +1,9 @@
 use crate::hex_sphere::{HexSphere, HexSphereMeshHandle};
 use crate::tectonics::TectonicsIteration;
 use bevy::prelude::*;
+use kdtree::KdTree;
 use rayon::prelude::*;
-use suz_sim::tectonics::{OCEANIC_PARTICLE_HEIGHT, Tectonics};
+use suz_sim::tectonics::{CONTINENTAL_HEIGHT, OCEANIC_HEIGHT, Tectonics};
 use suz_sim::vec_utils;
 
 pub fn interpolate_vertices(
@@ -12,8 +13,37 @@ pub fn interpolate_vertices(
     tectonics_iteration: Res<TectonicsIteration>,
     mesh_handle: Res<HexSphereMeshHandle>,
 ) {
-    if tectonics_iteration.0 % 10 == 0 {
-        // 1. For each tile, compute average height from nearby particles, update tile height and center vertex height
+    if tectonics_iteration.0 % 40 == 0 {
+        // 1. For each tile, compute average height from nearby point masses, update tile height and center vertex height
+        let mut kdtree = KdTree::<f32, (_, f32), [f32; 3]>::new(3);
+        for (point_mass, plate_type, spring_compressions) in
+            tectonics.plates.iter().flat_map(|plate| {
+                plate
+                    .shape
+                    .par_iter_point_masses_with_springs()
+                    .map(|(point_mass, springs)| {
+                        (
+                            point_mass,
+                            plate.plate_type,
+                            springs.map(|spring| {
+                                let pm_a = &plate.shape.point_masses[spring.anchor_a];
+                                let pm_b = &plate.shape.point_masses[spring.anchor_a];
+                                let compression =
+                                    spring.rest_length - pm_a.geodesic_distance(&pm_b);
+                                compression
+                            }),
+                        )
+                    })
+            })
+        {
+            kdtree
+                .add(
+                    point_mass.position.into(),
+                    (plate_type, spring_compressions.sum::<f32>()),
+                )
+                .ok();
+        }
+
         // TODO: Compute compression for each point mass once, put in spatial datastructure, should speed this up massively
         let tile_results: Vec<_> = hex_sphere
             .tiles
@@ -24,49 +54,27 @@ pub fn interpolate_vertices(
                 let mut weight_total = 0.0;
                 let tile_normal = tile.normal;
                 let tile_center = tile.center;
-                for (point_mass, spring_compressions) in tectonics
-                    .plates
-                    .iter()
-                    .filter_map(|plate| {
-                        if plate.shape.within_bounding_spherical_cap(tile.normal) {
-                            Some(&plate.shape)
-                        } else {
-                            None
-                        }
-                    })
-                    .flat_map(|shape| {
-                        shape.iter_point_masses_with_springs().filter_map(
-                            |(point_mass, springs)| {
-                                if vec_utils::geodesic_distance(point_mass.position, tile.normal)
-                                    < tectonics.config.particle_force_radius
-                                {
-                                    Some((
-                                        point_mass,
-                                        springs.map(|spring| {
-                                            let pm_a = &shape.point_masses[spring.anchor_a];
-                                            let pm_b = &shape.point_masses[spring.anchor_a];
-                                            let compression =
-                                                spring.rest_length - pm_a.geodesic_distance(&pm_b);
-                                            compression
-                                        }),
-                                    ))
-                                } else {
-                                    None
-                                }
-                            },
-                        )
-                    })
+                let position: [f32; 3] = tile_normal.into();
+                for (distance, (plate_type, compression)) in kdtree
+                    .within(
+                        &position,
+                        tectonics.config.vertex_interpolation_radius,
+                        &vec_utils::geodesic_distance_arr,
+                    )
+                    .unwrap()
                 {
-                    let dist = 1.0 - tile_normal.dot(point_mass.position); // geodesic cosine distance
-                    let weight = 1.0 / (dist + 0.01); // closer = higher weight, avoid div by zero
-                    weighted_sum += spring_compressions.sum::<f32>() / 2.;
+                    let weight = 1.0 / (distance + 0.01); // closer = higher weight, avoid div by zero
+                    let plate_height = match plate_type {
+                        suz_sim::plate::PlateType::Oceanic => OCEANIC_HEIGHT,
+                        suz_sim::plate::PlateType::Continental => CONTINENTAL_HEIGHT,
+                    };
+                    weighted_sum += (plate_height + compression) * weight;
                     weight_total += weight;
                 }
                 let new_height = if weight_total > 0.0 {
-                    // TODO: 1.0 should be replaced by plate height for continental vs oceanic
-                    1.0 + weighted_sum / weight_total
+                    weighted_sum / weight_total
                 } else {
-                    OCEANIC_PARTICLE_HEIGHT
+                    OCEANIC_HEIGHT
                 };
                 let color = if new_height < 1.0 {
                     [0.0, 0.0, 1.0, 1.0] // blue for below 1.0

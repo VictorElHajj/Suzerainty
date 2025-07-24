@@ -70,7 +70,7 @@ struct TileAmountText;
 struct MeshGenerationTimeText;
 
 #[derive(Component)]
-struct TectonicsParticleText;
+struct TectonicsPointMassText;
 
 #[derive(Component)]
 struct TectonicsIterationText;
@@ -154,7 +154,7 @@ fn update_tectonics(
     tectonics: Res<Tectonics>,
     tectonics_iteration: Res<TectonicsIteration>,
     mut texts: ParamSet<(
-        Query<&mut Text, With<TectonicsParticleText>>,
+        Query<&mut Text, With<TectonicsPointMassText>>,
         Query<&mut Text, With<TectonicsIterationText>>,
     )>,
 ) {
@@ -437,7 +437,7 @@ fn setup(
                         },
                         children![
                             (
-                                Text::new("Particles: "),
+                                Text::new("Point masses: "),
                                 TextFont {
                                     font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                     font_size: 12.0,
@@ -456,7 +456,7 @@ fn setup(
                                     ..Default::default()
                                 },
                                 TextColor(palettes::css::GOLD.into()),
-                                TectonicsParticleText
+                                TectonicsPointMassText
                             )
                         ]
                     ),

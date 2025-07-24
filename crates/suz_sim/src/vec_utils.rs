@@ -22,3 +22,15 @@ pub fn vec3_to_f64_3(input: Vec3) -> [f64; 3] {
 pub fn geodesic_distance(a: Vec3, b: Vec3) -> f32 {
     f32::acos(a.dot(b).clamp(-1., 1.))
 }
+
+#[inline]
+pub fn geodesic_distance_arr(a: &[f32], b: &[f32]) -> f32 {
+    debug_assert_eq!(a.len(), b.len());
+    let dot = if a.len() == 3 {
+        a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    } else {
+        // Forced by kdtree to have this be generic
+        a.iter().zip(b.iter()).map(|(a, b)| *a * *b).sum::<f32>()
+    };
+    dot.clamp(-1.0, 1.0).acos()
+}

@@ -32,7 +32,8 @@ impl Plugin for TectonicsPlugin {
             .add_systems(
                 Update,
                 (
-                    draw_particles,
+                    draw_point_masses,
+                    interpolate_vertices.run_if(in_state(SimulationState::Tectonics)),
                     simulate_system.run_if(in_state(SimulationState::Tectonics)),
                 ),
             );
@@ -50,7 +51,7 @@ fn setup(config: Res<TectonicsPluginConfig>, mut commands: Commands, mut rng: Re
     commands.insert_resource(particle_sphere);
 }
 
-fn draw_particles(
+fn draw_point_masses(
     mut gizmos: Gizmos,
     tectonics: Res<Tectonics>,
     particle_sphere: Res<ParticleSphere>,

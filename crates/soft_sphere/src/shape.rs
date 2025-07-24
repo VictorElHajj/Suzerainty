@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
 use glam::{Quat, Vec3};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::collections::HashMap;
 
 use crate::{point_mass::PointMass, spring::Spring};
 
@@ -126,6 +126,24 @@ impl Shape {
                         "Tried to get springs for point mass {i} not in spring_map"
                     ))
                     .iter()
+                    .map(|spring_index| &self.springs[*spring_index]),
+            )
+        })
+    }
+
+    /// Returns an iterator going over each point mass and the springs it is an anchor for.
+    pub fn par_iter_point_masses_with_springs(
+        &self,
+    ) -> impl Iterator<Item = (&PointMass, impl ParallelIterator<Item = &Spring>)> {
+        self.point_masses.iter().enumerate().map(|(i, point_mass)| {
+            (
+                point_mass,
+                self.spring_map
+                    .get(&i)
+                    .expect(&format!(
+                        "Tried to get springs for point mass {i} not in spring_map"
+                    ))
+                    .par_iter()
                     .map(|spring_index| &self.springs[*spring_index]),
             )
         })

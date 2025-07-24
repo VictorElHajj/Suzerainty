@@ -12,9 +12,9 @@ use crate::{
 };
 
 pub const OCEANIC_PARTICLE_MASS: f32 = 1.;
-pub const OCEANIC_PARTICLE_HEIGHT: f32 = 0.98;
+pub const OCEANIC_HEIGHT: f32 = 0.98;
 pub const CONTINENTAL_PARTICLE_MASS: f32 = 5.;
-pub const CONTINENTAL_PARTICLE_HEIGHT: f32 = 1.02;
+pub const CONTINENTAL_HEIGHT: f32 = 1.02;
 
 pub const BIN_COUNT: usize = 60;
 
@@ -31,9 +31,7 @@ pub struct TectonicsConfiguration {
     /// Smallest amount of particles allowed on a plate, if fewer the plate is merged with another
     pub min_plate_size: usize,
     /// Radius which describes the maximum distance at which particles interact
-    pub particle_force_radius: f32,
-    /// Modifier to the plate particle repulsive force, is 4x to particles of other plates
-    pub repulsive_force_modifier: f32,
+    pub vertex_interpolation_radius: f32,
     /// Spring constant used for particle links
     pub spring_constant: f32,
     // Dampener coefficient for the spring forces, used to dampen oscillations
@@ -277,7 +275,7 @@ impl Tectonics {
         }
     }
 
-    // Each particle will be forced to have the velocity matching rotation around the ownings plate axis of rotation
+    // Each point mass will be forced to have the velocity matching rotation around the ownings plate axis of rotation
     // Then we adjust that velocity depending on other particles
     pub fn simulate(&mut self, rng: &mut rand::rngs::StdRng) {
         // Apply forces and update velocity and position

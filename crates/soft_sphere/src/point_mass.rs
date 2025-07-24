@@ -1,5 +1,6 @@
 use glam::Vec3;
 
+#[derive(PartialEq)]
 pub struct PointMass {
     pub position: Vec3,
     pub velocity: Vec3,
