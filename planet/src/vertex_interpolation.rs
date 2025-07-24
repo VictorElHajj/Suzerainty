@@ -44,7 +44,6 @@ pub fn interpolate_vertices(
                 .ok();
         }
 
-        // TODO: Compute compression for each point mass once, put in spatial datastructure, should speed this up massively
         let tile_results: Vec<_> = hex_sphere
             .tiles
             .par_iter()
