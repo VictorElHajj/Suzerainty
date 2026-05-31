@@ -1,5 +1,3 @@
-#![feature(slice_as_array)]
-
 use crate::{
     debug_ui::{DebugDiagnostics, DebugUIPlugin},
     hex_sphere::{HexSphereConfig, HexSpherePlugin},
